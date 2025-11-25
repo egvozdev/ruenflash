@@ -1,0 +1,68 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+    // Migrate Room annotation processing to KSP to avoid KAPT issues on Windows
+    id 'com.google.devtools.ksp'
+}
+
+android {
+    namespace 'com.example.flashcards'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.flashcards"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+}
+kotlin { jvmToolchain(17) }
+
+dependencies {
+    // AndroidX
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.10.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Room (use KSP instead of KAPT)
+    implementation "androidx.room:room-runtime:2.6.1"
+    ksp "androidx.room:room-compiler:2.6.1"
+    implementation "androidx.room:room-ktx:2.6.1"
+
+    // Lifecycle & ViewModel
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+
+    // Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+
+    // Gson (Room TypeConverter)
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    implementation "androidx.fragment:fragment-ktx:1.6.2"
+    // (Optional Navigation, Activity, Fragment)
+    // implementation "androidx.navigation:navigation-fragment-ktx:2.7.6"
+    // implementation "androidx.navigation:navigation-ui-ktx:2.7.6"
+}
+
+// Optional: KSP args for Room (schema location, incremental). Can be enabled later if needed.
+//ksp {
+//    arg("room.incremental", "true")
+//}
+

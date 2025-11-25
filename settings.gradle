@@ -1,0 +1,4 @@
+// settings.gradle (Groovy DSL)
+include ':app'
+rootProject.name = "Flashcards"
+//android.useAndroidX=true

@@ -1,0 +1,447 @@
+package com.example.flashcards.ui
+
+import android.os.Bundle
+import android.view.*
+import android.util.Log
+import com.example.flashcards.R
+import android.widget.EditText
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
+import com.example.flashcards.databinding.FragmentFlashcardBinding
+import com.example.flashcards.viewmodel.FlashcardViewModel
+import com.example.flashcards.viewmodel.FlashcardViewModelFactory
+import com.example.flashcards.repository.FlashcardRepository
+import com.example.flashcards.data.FlashcardDatabase
+import com.example.flashcards.util.importCsvText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+import androidx.room.withTransaction
+
+class FlashcardFragment : Fragment() {
+    // Debug logging switch: set to true only while developing.
+    // In release builds keep it false so debug logs are effectively commented out.
+    private companion object { const val DEBUG_LOGS = false }
+    private var _binding: FragmentFlashcardBinding? = null
+    private val binding get() = _binding!!
+    private val viewModelFactory by lazy {
+        val dao = FlashcardDatabase.getDatabase(requireContext().applicationContext).flashcardDao()
+        FlashcardViewModelFactory(FlashcardRepository(dao))
+    }
+    private val viewModel: FlashcardViewModel by viewModels { viewModelFactory }
+    private var showingSide1 = true
+    private val TAG = "FlashcardFrag"
+    // Track whether each side of the current card has been shown in this session
+    private var seenSide1 = false
+    private var seenSide2 = false
+
+    private enum class Filter { ALL, LEARNED, UNLEARNED }
+    private var currentFilter: Filter = Filter.ALL
+
+    // Simple progress dialog shown during long operations (download/import)
+    private var progressDialog: AlertDialog? = null
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = FragmentFlashcardBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        // Debug logs are printed only when DEBUG_LOGS is enabled; silenced in release.
+        if (DEBUG_LOGS) Log.d(TAG, "onViewCreated")
+        viewModel.cards.observe(viewLifecycleOwner) {
+            if (DEBUG_LOGS) Log.d(TAG, "cards observer size=${it.size}")
+            // New/reloaded list, reset state and show according to global preference
+            showingSide1 = viewModel.showSide1First
+            resetSeenForCurrentCard()
+            showCurrentCard()
+        }
+        binding.btnLearned.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
+            viewModel.getCurrentCard()?.let {
+                // Toggle learned status depending on which set we're viewing
+                if (currentFilter == Filter.LEARNED) {
+                    viewModel.markUnlearned(it)
+                } else {
+                    // For UNLEARNED or ALL -> mark as learned
+                    viewModel.markLearned(it)
+                }
+            }
+            // When working under a filter (LEARNED or UNLEARNED), reload from DB to respect the filter
+            // so the toggled card disappears from the current list. Otherwise just advance.
+            if (currentFilter == Filter.LEARNED || currentFilter == Filter.UNLEARNED) {
+                reloadAccordingToFilter()
+            } else {
+                viewModel.nextCard()
+                showingSide1 = viewModel.showSide1First
+                resetSeenForCurrentCard()
+                showCurrentCard()
+            }
+        }
+        binding.btnLearned.setOnLongClickListener {
+            val ctx = requireContext()
+            AlertDialog.Builder(ctx)
+                .setTitle(getString(R.string.delete_title))
+                .setMessage(getString(R.string.delete_message))
+                .setPositiveButton(getString(R.string.btn_delete)) { d, _ ->
+                    d.dismiss()
+                    viewModel.deleteCurrentCard {
+                        // After deletion, advance is handled by VM list update; just reset and show
+                        showingSide1 = viewModel.showSide1First
+                        resetSeenForCurrentCard()
+                        showCurrentCard()
+                        Toast.makeText(ctx, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton(getString(R.string.btn_cancel)) { d, _ -> d.dismiss() }
+                .show()
+            true
+        }
+        binding.btnSwitchSide.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnSwitchSide click")
+            viewModel.toggleDirection()
+            showingSide1 = viewModel.showSide1First
+            resetSeenForCurrentCard()
+            showCurrentCard()
+        }
+        binding.cardText.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "cardText tap")
+            val bothSeen = seenSide1 && seenSide2
+            if (bothSeen) {
+                // Advance to next card if both sides of current card have been shown
+                if (DEBUG_LOGS) Log.d(TAG, "both sides seen -> next card")
+                viewModel.nextCard()
+                showingSide1 = viewModel.showSide1First
+                resetSeenForCurrentCard()
+                showCurrentCard()
+            } else {
+                // Flip
+                if (DEBUG_LOGS) Log.d(TAG, "flip side")
+                showingSide1 = !showingSide1
+                showCurrentCard()
+            }
+        }
+        binding.cardText.setOnLongClickListener {
+            // Toggle debug overlay
+            val dv = binding.debugInfo
+            dv.visibility = if (dv.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            updateDebugInfo()
+            true
+        }
+        binding.btnShowLearned.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnShowLearned click (toggle)")
+            if (currentFilter == Filter.LEARNED) {
+                // Currently showing learned -> switch to unlearned
+                viewModel.loadUnlearned()
+                currentFilter = Filter.UNLEARNED
+            } else {
+                // From ALL or UNLEARNED -> switch to learned
+                viewModel.loadCards(learnedOnly = true)
+                currentFilter = Filter.LEARNED
+            }
+            updateShowLearnedButtonText()
+        }
+        // Removed "Show all / Show not learnt" button per new requirements
+        binding.btnDownload.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnDownload click")
+            showDownloadDialog()
+        }
+        // Top bar actions
+        binding.btnExit.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnExit click")
+            requireActivity().finish()
+        }
+        binding.btnStats.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnStats click")
+            viewModel.getStats { learned, notLearned, total ->
+                AlertDialog.Builder(requireContext())
+                    .setTitle(getString(R.string.stats_title))
+                    .setMessage(getString(R.string.stats_learned, learned) + "\n" +
+                                getString(R.string.stats_not_learned, notLearned) + "\n" +
+                                getString(R.string.stats_total, total))
+                    .setPositiveButton(getString(R.string.btn_ok)) { d, _ -> d.dismiss() }
+                    .show()
+            }
+        }
+        binding.btnHelp.setOnClickListener {
+            if (DEBUG_LOGS) Log.d(TAG, "btnHelp click")
+            AlertDialog.Builder(requireContext())
+                .setTitle(getString(R.string.help_title))
+                .setMessage(getString(R.string.help_message))
+                .setPositiveButton(getString(R.string.btn_ok)) { d, _ -> d.dismiss() }
+                .show()
+        }
+        // Language toggle: shows target language code to switch to
+        binding.btnLang.setOnClickListener {
+            toggleLanguage()
+        }
+        ensureInitialLanguage()
+        updateLanguageToggleLabel()
+        // Initial state: show NOT learned cards
+        viewModel.loadUnlearned()
+        currentFilter = Filter.UNLEARNED
+        updateShowLearnedButtonText()
+    }
+
+    private fun showCurrentCard() {
+        val card = viewModel.getCurrentCard()
+        binding.cardText.text = when {
+            card == null -> getString(R.string.empty_state)
+            showingSide1 -> card.side1.joinToString("\n")
+            else -> card.side2.joinToString("\n")
+        }
+        // Mark the side we just showed as seen
+        if (card != null) {
+            if (showingSide1) seenSide1 = true else seenSide2 = true
+        }
+        updateDebugInfo()
+    }
+
+    private fun updateDebugInfo() {
+        val dv = binding.debugInfo
+        if (dv.visibility != View.VISIBLE) return
+        val id = viewModel.getCurrentCardId() ?: "<none>"
+        val learned = viewModel.getCurrentCard()?.isLearned ?: false
+        dv.text = "index=${viewModel.getCurrentIndex()} total=${viewModel.getTotalCount()} showSide1First=${viewModel.showSide1First} showingSide1=$showingSide1 seen1=$seenSide1 seen2=$seenSide2 id=$id learned=$learned"
+    }
+
+    private fun resetSeenForCurrentCard() {
+        seenSide1 = false
+        seenSide2 = false
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    private fun showDownloadDialog() {
+        val ctx = requireContext()
+        val input = EditText(ctx)
+        input.hint = getString(R.string.download_hint)
+        AlertDialog.Builder(ctx)
+            .setTitle(getString(R.string.download_title))
+            .setMessage(getString(R.string.download_message))
+            .setView(input)
+            .setPositiveButton(getString(R.string.download_go)) { d, _ ->
+                val link = input.text?.toString()?.trim().orEmpty()
+                if (link.isEmpty()) {
+                    Toast.makeText(ctx, getString(R.string.toast_link_empty), Toast.LENGTH_SHORT).show()
+                } else {
+                    downloadAndImport(link)
+                }
+                d.dismiss()
+            }
+            .setNegativeButton(getString(R.string.btn_cancel)) { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    private fun downloadAndImport(link: String) {
+        val ctx = requireContext().applicationContext
+        val dao = FlashcardDatabase.getDatabase(ctx).flashcardDao()
+        val urlToUse = convertDriveLinkToDirect(link)
+        // Hide keyboard if visible
+        try {
+            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
+        } catch (_: Exception) {}
+
+        binding.btnDownload.isEnabled = false
+        showProgress(getString(R.string.downloading))
+
+        lifecycleScope.launch {
+            try {
+                val text = withTimeout(60_000) { withContext(Dispatchers.IO) { downloadText(urlToUse) } }
+                if (text.isBlank()) throw IllegalStateException("Empty CSV content")
+                showProgress(getString(R.string.importing))
+                // Perform bulk import within a single Room transaction to significantly
+                // speed up many small writes and avoid timeouts on large datasets.
+                withTimeout(120_000) {
+                    withContext(Dispatchers.IO) {
+                        val db = FlashcardDatabase.getDatabase(ctx)
+                        db.withTransaction {
+                            importCsvText(text, dao)
+                        }
+                    }
+                }
+                reloadAccordingToFilter()
+                Toast.makeText(requireContext(), getString(R.string.toast_cards_updated), Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Download/import failed", e)
+                Toast.makeText(requireContext(), getString(R.string.toast_failed_prefix) + ": ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                hideProgress()
+                binding.btnDownload.isEnabled = true
+            }
+        }
+    }
+
+    private fun reloadAccordingToFilter() {
+        when (currentFilter) {
+            Filter.ALL -> viewModel.loadCards(learnedOnly = false)
+            Filter.LEARNED -> viewModel.loadCards(learnedOnly = true)
+            Filter.UNLEARNED -> viewModel.loadUnlearned()
+        }
+    }
+
+    private fun convertDriveLinkToDirect(link: String): String {
+        // Supports common Google Drive and Google Sheets links by converting them to direct CSV downloads.
+        // Drive file links:
+        //   https://drive.google.com/file/d/{id}/view?... -> https://drive.google.com/uc?export=download&id={id}
+        //   https://drive.google.com/open?id={id}        -> https://drive.google.com/uc?export=download&id={id}
+        // Google Sheets links:
+        //   https://docs.google.com/spreadsheets/d/{id}/edit#gid=0 -> https://docs.google.com/spreadsheets/d/{id}/export?format=csv&gid=0
+        // If already a direct/export URL, return as-is.
+        return try {
+            val lower = link.lowercase()
+
+            // Sheets: /spreadsheets/d/{id}/...
+            if (lower.contains("docs.google.com/spreadsheets/")) {
+                // Matches optional "/u/{num}/" segment that Google sometimes inserts
+                val id = Regex("spreadsheets/(?:u/\\d+/)?d/([a-zA-Z0-9_-]+)").find(link)?.groupValues?.getOrNull(1)
+                val gid = Regex("[?#&]gid=([0-9]+)").find(link)?.groupValues?.getOrNull(1)
+                if (id != null) {
+                    return buildString {
+                        append("https://docs.google.com/spreadsheets/d/")
+                        append(id)
+                        append("/export?format=csv")
+                        if (!gid.isNullOrBlank()) {
+                            append("&gid=")
+                            append(gid)
+                        }
+                    }
+                }
+            }
+
+            // Drive file: /file/d/{id}/...
+            val fileRegex = Regex("drive.google.com/file/d/([a-zA-Z0-9_-]+)/")
+            val fileMatch = fileRegex.find(link)
+            if (fileMatch != null) {
+                val id = fileMatch.groupValues[1]
+                return "https://drive.google.com/uc?export=download&id=$id"
+            }
+
+            // Drive file: open?id={id}
+            if (lower.contains("drive.google.com") && lower.contains("id=")) {
+                val id = Regex("[?&]id=([^&]+)").find(link)?.groupValues?.getOrNull(1)
+                if (id != null) return "https://drive.google.com/uc?export=download&id=$id"
+            }
+
+            // Already a direct/export URL or unknown -> return original
+            link
+        } catch (_: Exception) {
+            link
+        }
+    }
+
+    @Suppress("BlockingMethodInNonBlockingContext")
+    private suspend fun downloadText(urlStr: String): String {
+        return withContext(Dispatchers.IO) {
+            val url = URL(urlStr)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "FlashcardsApp/1.0 (Android)")
+                setRequestProperty("Accept", "text/csv, text/plain, */*")
+            }
+            try {
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    val err = try { conn.errorStream?.bufferedReader()?.readText() } catch (_: Exception) { null }
+                    throw IllegalStateException("HTTP $code${if (err.isNullOrBlank()) "" else ": $err"}")
+                }
+                val contentType = conn.contentType ?: ""
+                val body = conn.inputStream.use { ins ->
+                    BufferedReader(InputStreamReader(ins)).use { br ->
+                        br.readText()
+                    }
+                }
+                // If Drive/Sheets returned an HTML page instead of CSV, hint about permissions/export
+                if (contentType.contains("text/html", true) || body.startsWith("<!DOCTYPE", true)) {
+                    throw IllegalStateException("Received HTML instead of CSV. Ensure the link is public. For Google Sheets paste the normal sheet link; the app will auto-convert to CSV export, but access must be 'Anyone with the link'.")
+                }
+                body
+            } finally {
+                conn.disconnect()
+            }
+        }
+    }
+
+    private fun showProgress(message: String) {
+        val current = progressDialog
+        if (current != null && current.isShowing) {
+            current.setMessage(message)
+            return
+        }
+        val ctx = requireContext()
+        val pb = ProgressBar(ctx)
+        val container = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(32, 32, 32, 16)
+            addView(pb)
+        }
+        progressDialog = AlertDialog.Builder(ctx)
+            .setTitle(message)
+            .setView(container)
+            .setCancelable(false)
+            .create()
+        progressDialog?.show()
+    }
+
+    private fun hideProgress() {
+        progressDialog?.dismiss()
+        progressDialog = null
+    }
+
+    private fun updateShowLearnedButtonText() {
+        // When showing learned, offer to show unlearned; otherwise offer to show learned
+        val text = when (currentFilter) {
+            Filter.LEARNED -> getString(R.string.show_not_learned)
+            else -> getString(R.string.show_learned)
+        }
+        binding.btnShowLearned.text = text
+    }
+
+    private fun ensureInitialLanguage() {
+        val prefs = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val saved = prefs.getString("lang", null)
+        val target = saved ?: "en" // default English
+        val current = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+        if (current != target) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(target))
+        }
+    }
+
+    private fun toggleLanguage() {
+        val prefs = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val current = AppCompatDelegate.getApplicationLocales().toLanguageTags().ifBlank { "en" }
+        val next = if (current.startsWith("ru")) "en" else "ru"
+        prefs.edit().putString("lang", next).apply()
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(next))
+        // Recreate to apply strings
+        requireActivity().recreate()
+    }
+
+    private fun updateLanguageToggleLabel() {
+        // Show the target language code (what will be switched to on tap)
+        val current = AppCompatDelegate.getApplicationLocales().toLanguageTags().ifBlank { "en" }
+        val targetCode = if (current.startsWith("ru")) "EN" else "RU"
+        binding.btnLang.text = targetCode
+    }
+}

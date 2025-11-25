@@ -1,0 +1,55 @@
+<resources>
+    <string name="app_name">Карточки слов</string>
+    <string name="next">Далее</string>
+    <string name="learned">Изучено</string>
+    <string name="switch_side">Поменять порядок</string>
+    <string name="show_learned">Показать изученные</string>
+    <string name="show_not_learned">Показать не изученные</string>
+    <string name="download_cards">Загрузить карточки</string>
+
+    <!-- Accessibility content descriptions -->
+    <string name="cd_exit">Выход</string>
+    <string name="cd_help">Справка</string>
+    <string name="cd_statistics">Статистика</string>
+    <string name="cd_language_toggle">Переключить язык</string>
+    <string name="cd_order_toggle">Переключить режим порядка</string>
+
+    <!-- Buttons and labels -->
+    <string name="btn_learned_toggle">Изучено/Не изучено/Удалить</string>
+    <string name="btn_ok">ОК</string>
+    <string name="btn_cancel">Отмена</string>
+    <string name="btn_delete">Удалить</string>
+
+    <!-- Dialogs: Help -->
+    <string name="help_title">Справка</string>
+    <string name="help_message">Как пользоваться:\n\n• Нажмите на текст карточки, чтобы перевернуть стороны. После показа обеих сторон следующее нажатие покажет следующую карточку. Нажатие на левой стороне экрана покажет первую сторону карточки\n• Изучено/Не изучено/Удалить: короткое нажатие переключает статус в зависимости от текущего списка (в списке Не изученных — помечает как изученную; в списке Изученных — помечает как не изученную). Долгое нажатие предлагает удалить карточку.\n• Поменять порядок переключает, какая сторона показывается первой.\n• Показать изученные — переключает между изученными и не изученными карточками.\n• Загрузить карточки позволяет импортировать CSV из Google Drive/Sheets.\n• Вы можете посмотреть статистику (кнопка 123), переключить язык интерфейса (кнопка RU/EN) и переключить режим показа случайный/последовательный (кнопка SEQ/RND)\n\nПодсказка: долгий тап по тексту карточки включает/выключает отладочную информацию.</string>
+
+    <!-- Dialogs: Download -->
+    <string name="download_title">Загрузка карточек</string>
+    <string name="download_message">Укажите ссылку на CSV-файл в Google Drive</string>
+    <string name="download_hint">Вставьте ссылку на файл Google Drive или Google Sheets (общий доступ)</string>
+    <string name="download_go">Загрузить</string>
+    <string name="downloading">Загрузка…</string>
+    <string name="importing">Импорт…</string>
+
+    <!-- Stats -->
+    <string name="stats_title">Статистика</string>
+    <string name="stats_learned">Изучено: %1$d</string>
+    <string name="stats_not_learned">Не изучено: %1$d</string>
+    <string name="stats_total">Всего: %1$d</string>
+    <string name="stats_last_download_title">Последняя загрузка</string>
+    <string name="stats_words_processed">Обработано слов: %1$d</string>
+    <string name="stats_added">Добавлено: %1$d</string>
+    <string name="stats_updated">Обновлено: %1$d</string>
+
+    <!-- Delete confirm -->
+    <string name="delete_title">Удалить карточку?</string>
+    <string name="delete_message">Эта карточка будет удалена из базы. Вы уверены?</string>
+
+    <!-- Toasts and messages -->
+    <string name="toast_deleted">Карточка удалена</string>
+    <string name="toast_link_empty">Ссылка пуста</string>
+    <string name="toast_cards_updated">Карточки обновлены</string>
+    <string name="toast_failed_prefix">Ошибка</string>
+    <string name="empty_state">Нет карточек в выбранной категории (Изученные/Не изученные)!</string>
+</resources>

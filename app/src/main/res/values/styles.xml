@@ -1,0 +1,8 @@
+<resources>
+    <!-- App theme based on AppCompat/Material Components -->
+    <style name="Theme.Flashcards" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Customize your theme here if needed -->
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+    </style>
+</resources>

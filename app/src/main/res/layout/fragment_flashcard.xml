@@ -1,0 +1,110 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <!-- Top bar with Help (?), Language toggle (RU/EN), Stats ("123"), Order (RND/SEQ),
+         and on the right: Download, Close (X) -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp">
+        <!-- Help moved to the left side -->
+        <ImageButton
+            android:id="@+id/btnHelp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cd_help"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_help" />
+        <!-- Language toggle (shows the target language code to switch to) -->
+        <TextView
+            android:id="@+id/btnLang"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="RU"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:padding="8dp"
+            android:contentDescription="@string/cd_language_toggle"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginStart="8dp"/>
+        <!-- Stats control styled like the icon buttons: transparent background, compact, text-only label "123" -->
+        <TextView
+            android:id="@+id/btnStats"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="123"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:padding="8dp"
+            android:contentDescription="@string/cd_statistics"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginStart="8dp"/>
+        <!-- Order toggle: shows current order mode (RND/SEQ) -->
+        <TextView
+            android:id="@+id/btnOrder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="RND"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:padding="8dp"
+            android:contentDescription="@string/cd_order_toggle"
+            android:background="@android:color/transparent"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginStart="8dp"/>
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+        <!-- Download moved to top bar, placed before close button -->
+        <ImageButton
+            android:id="@+id/btnDownload"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/download_cards"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_download_tray"
+            android:tint="?attr/colorControlNormal"
+            app:tint="?attr/colorControlNormal"
+            android:padding="4dp"
+            android:layout_marginEnd="8dp" />
+        <!-- Close (Exit) moved to top-right -->
+        <ImageButton
+            android:id="@+id/btnExit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cd_exit"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+    </LinearLayout>
+    <TextView
+        android:id="@+id/cardText"
+        android:textSize="32sp"
+        android:gravity="center"
+        android:layout_weight="1"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:lineSpacingMultiplier="1.2" />
+    <!-- Debug overlay (hidden by default). Long-press cardText to toggle. -->
+    <TextView
+        android:id="@+id/debugInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:padding="8dp"
+        android:textColor="#FF4444"
+        android:background="#22FF4444"
+        android:visibility="gone" />
+    <!-- Buttons order: 1) Learned/Unlearned/Delete, 2) Switch, 3) Show learned -->
+    <Button android:id="@+id/btnLearned" android:text="@string/btn_learned_toggle" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <Button android:id="@+id/btnSwitchSide" android:text="@string/switch_side" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <Button android:id="@+id/btnShowLearned" android:text="@string/show_learned" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+</LinearLayout>

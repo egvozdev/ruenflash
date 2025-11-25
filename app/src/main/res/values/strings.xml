@@ -1,0 +1,55 @@
+<resources>
+    <string name="app_name">Word cards</string>
+    <string name="next">Next</string>
+    <string name="learned">Learned</string>
+    <string name="switch_side">Change Order</string>
+    <string name="show_learned">Show learned</string>
+    <string name="show_not_learned">Show not learned</string>
+    <string name="download_cards">Download cards</string>
+
+    <!-- Accessibility content descriptions -->
+    <string name="cd_exit">Exit</string>
+    <string name="cd_help">Help</string>
+    <string name="cd_statistics">Statistics</string>
+    <string name="cd_language_toggle">Toggle language</string>
+    <string name="cd_order_toggle">Toggle order mode</string>
+
+    <!-- Buttons and labels -->
+    <string name="btn_learned_toggle">Learned/Unlearned/Delete</string>
+    <string name="btn_ok">OK</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_delete">Delete</string>
+
+    <!-- Dialogs: Help -->
+    <string name="help_title">Help</string>
+    <string name="help_message">How to use:\n\n• Tap the card text to flip sides. After both sides are shown, the next tap shows the next card, tap on the left screen side shows first card side.\n• Learned/Unlearned/Delete: short tap toggles learned status based on the current list (in Not learned view -&gt; marks learned; in Learned view -&gt; marks not learned). Long press asks to delete the card.\n• Change Order switches which side is shown first.\n• Show learned toggles between learned and not learned cards.\n• Download cards lets you import from a Google Drive/Sheets CSV link.\n• You can switch interface language (RU/EN button), show statistic (123 button), and change cards order mode sequential/random (SEQ/RND button). \n\nTip: long-press the card text to toggle debug info.</string>
+
+    <!-- Dialogs: Download -->
+    <string name="download_title">Download cards</string>
+    <string name="download_message">Provide a link to CSV file on Google Drive</string>
+    <string name="download_hint">Paste Google Drive file or Google Sheets link (public)</string>
+    <string name="download_go">Download</string>
+    <string name="downloading">Downloading…</string>
+    <string name="importing">Importing…</string>
+
+    <!-- Stats -->
+    <string name="stats_title">Statistics</string>
+    <string name="stats_learned">Learned: %1$d</string>
+    <string name="stats_not_learned">Not learned: %1$d</string>
+    <string name="stats_total">Total: %1$d</string>
+    <string name="stats_last_download_title">Last download</string>
+    <string name="stats_words_processed">Words processed: %1$d</string>
+    <string name="stats_added">Added: %1$d</string>
+    <string name="stats_updated">Updated: %1$d</string>
+
+    <!-- Delete confirm -->
+    <string name="delete_title">Delete card?</string>
+    <string name="delete_message">This card will be deleted from the database. Are you sure?</string>
+
+    <!-- Toasts and messages -->
+    <string name="toast_deleted">Card deleted</string>
+    <string name="toast_link_empty">Link is empty</string>
+    <string name="toast_cards_updated">Cards updated</string>
+    <string name="toast_failed_prefix">Failed</string>
+    <string name="empty_state">No cards in selected (Learned/Not learned) category!</string>
+</resources>
