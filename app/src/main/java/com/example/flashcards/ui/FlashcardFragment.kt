@@ -33,6 +33,16 @@ import androidx.core.os.LocaleListCompat
 import androidx.room.withTransaction
 
 class FlashcardFragment : Fragment() {
+    override fun onPause() {
+        super.onPause()
+        viewModel.saveCurrentCardIdx(requireContext())
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.saveCurrentCardIdx(requireContext())
+    }
+
     // Debug logging switch: set to true only while developing.
     // In release builds keep it false so debug logs are effectively commented out.
     private companion object { const val DEBUG_LOGS = false }
@@ -62,14 +72,25 @@ class FlashcardFragment : Fragment() {
 
     // Simple progress dialog shown during long operations (download/import)
     private var progressDialog: AlertDialog? = null
+    private var isReloading = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentFlashcardBinding.inflate(inflater, container, false)
         return binding.root
     }
 
+    //override fun onPause() {
+    //    super.onPause()
+    //    viewModel.saveCurrentCardIdx(requireContext())
+    //}
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+
         super.onViewCreated(view, savedInstanceState)
+        // Восстановить позицию карточки
+                viewModel.restoreCurrentCardIdx(requireContext())
+
+        //viewModel.restoreCurrentCardIdx(requireContext())
+
         // Debug logs are printed only when DEBUG_LOGS is enabled; silenced in release.
         if (DEBUG_LOGS) Log.d(TAG, "onViewCreated")
         // Initialize order mode from saved preference before observing/initial loads
@@ -78,6 +99,7 @@ class FlashcardFragment : Fragment() {
         val initialMode = if (savedOrder == "SEQUENTIAL")
             com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL
         else com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.RANDOM
+
         viewModel.setOrderMode(initialMode)
         // Setup order toggle button
         binding.btnOrder.setOnClickListener {
@@ -90,14 +112,27 @@ class FlashcardFragment : Fragment() {
             reloadAccordingToFilter()
         }
         updateOrderToggleLabel()
+
         viewModel.cards.observe(viewLifecycleOwner) {
             if (DEBUG_LOGS) Log.d(TAG, "cards observer size=${it.size}")
-            // New/reloaded list, reset state and show according to global preference
-            clearHistory()
-            showingSide1 = viewModel.showSide1First
-            resetSeenForCurrentCard()
-            showCurrentCard()
+            if (!isReloading) {
+                clearHistory()
+                showingSide1 = viewModel.showSide1First
+                resetSeenForCurrentCard()
+                showCurrentCard()
+            }
+            //showCurrentCard()
+            isReloading = false
         }
+
+//        viewModel.cards.observe(viewLifecycleOwner) {
+//            if (DEBUG_LOGS) Log.d(TAG, "cards observer size=${it.size}")
+//            // New/reloaded list, reset state and show according to global preference
+//            clearHistory()
+//            showingSide1 = viewModel.showSide1First
+//            resetSeenForCurrentCard()
+//            showCurrentCard()
+//        }
         binding.btnLearned.setOnClickListener {
             if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
             viewModel.getCurrentCard()?.let {
@@ -109,17 +144,29 @@ class FlashcardFragment : Fragment() {
                     viewModel.markLearned(it)
                 }
             }
-            // When working under a filter (LEARNED or UNLEARNED), reload from DB to respect the filter
-            // so the toggled card disappears from the current list. Otherwise just advance.
+
+            // ВСЕГДА переходим на следующую карточку после пометки
+            viewModel.nextCard()
+           showingSide1 = viewModel.showSide1First
+            resetSeenForCurrentCard()
+            showCurrentCard()
+
+
+            // Если работаем под фильтром LEARNED или UNLEARNED — перезагружаем список,
+            // чтобы помеченная карточка исчезла из текущего набора
             if (currentFilter == Filter.LEARNED || currentFilter == Filter.UNLEARNED) {
+                //isReloading = true
                 reloadAccordingToFilter()
+
             } else {
+                // Для ALL фильтра — вручную переходим на следующую
                 viewModel.nextCard()
                 showingSide1 = viewModel.showSide1First
                 resetSeenForCurrentCard()
                 showCurrentCard()
             }
         }
+
         binding.btnLearned.setOnLongClickListener {
             val ctx = requireContext()
             AlertDialog.Builder(ctx)
@@ -170,6 +217,39 @@ class FlashcardFragment : Fragment() {
                 val total = viewModel.getTotalCount()
 
                 if (x <= leftThird) {
+                    // Если SEQUENTIAL: показывать первую сторону либо переходить циклически к предыдущей
+//                    if (viewModel.getOrderMode() == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL) {
+//                        if (!showingSide1) {
+//                            showingSide1 = true
+//                            showCurrentCard()
+//                        } else if (total > 0) {
+//                            viewModel.prevCard()
+//                            showingSide1 = viewModel.showSide1First
+//                            resetSeenForCurrentCard()
+//                            showCurrentCard()
+//                        }
+//                        return@setOnTouchListener true
+//                    }
+                    if (viewModel.getOrderMode() == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL) {
+                        // Определяем "стартовую" сторону для текущего режима
+                        val startSide = viewModel.showSide1First
+
+                        // Если сейчас показана НЕ стартовая сторона -> показать стартовую
+                        if (showingSide1 != startSide) {
+                            showingSide1 = startSide
+                            showCurrentCard()
+                            return@setOnTouchListener true
+                        }
+
+                        // Если показана стартовая сторона -> к предыдущей карточке
+                        if (total > 0) {
+                            viewModel.prevCard()
+                            showingSide1 = viewModel.showSide1First
+                            resetSeenForCurrentCard()
+                            showCurrentCard()
+                        }
+                        return@setOnTouchListener true
+                    }
                     // Special rule: in RANDOM mode, while showing the first side,
                     // a left tap should advance to the next random card.
                     if (viewModel.getOrderMode() == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.RANDOM && showingSide1) {
@@ -428,6 +508,7 @@ class FlashcardFragment : Fragment() {
     }
 
     private fun reloadAccordingToFilter() {
+        //isReloading = true
         when (currentFilter) {
             Filter.ALL -> viewModel.loadCards(learnedOnly = false)
             Filter.LEARNED -> viewModel.loadCards(learnedOnly = true)

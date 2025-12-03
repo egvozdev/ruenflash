@@ -5,6 +5,7 @@ import androidx.lifecycle.*
 import com.example.flashcards.data.Flashcard
 import com.example.flashcards.repository.FlashcardRepository
 import kotlinx.coroutines.launch
+import android.content.Context
 
 class FlashcardViewModel(private val repository: FlashcardRepository) : ViewModel() {
     // Debug logging switch: set to true only while developing.
@@ -20,6 +21,28 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
     enum class OrderMode { RANDOM, SEQUENTIAL }
     private var orderMode: OrderMode = OrderMode.RANDOM
 
+    // Сохранение индекса текущей карточки при выходе
+    fun saveCurrentCardIdx(context: Context) {
+        val prefs = context.getSharedPreferences("flashcards_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("last_card_idx", currentIndex).apply()
+    }
+
+    // Восстановление индекса при входе
+    fun restoreCurrentCardIdx(context: Context) {
+        val prefs = context.getSharedPreferences("flashcards_prefs", Context.MODE_PRIVATE)
+        currentIndex = prefs.getInt("last_card_idx", 0)
+    }
+
+//    fun saveCurrentCardIdx(context: Context) {
+//        val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+//        prefs.edit().putInt("last_card_idx", currentCardIndex).apply()
+//    }
+//
+//    fun restoreCurrentCardIdx(context: Context) {
+//        val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+//        currentCardIndex = prefs.getInt("last_card_idx", 0)
+//    }
+
     fun loadCards(learnedOnly: Boolean = false) {
         viewModelScope.launch {
             val list = if (learnedOnly) repository.getCardsByStatus(true) else repository.getAll()
@@ -27,7 +50,8 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
                 OrderMode.RANDOM -> list.shuffled().toMutableList()
                 OrderMode.SEQUENTIAL -> list.toMutableList()
             }
-            currentIndex = 0
+            //currentIndex = 0
+            if (currentIndex >= cardOrder.size) currentIndex = 0
             _cards.value = cardOrder
             // Debug-only logging; suppressed in release
             if (DEBUG_LOGS) Log.d(TAG, "loadCards(learnedOnly=$learnedOnly) size=${cardOrder.size}")
@@ -41,7 +65,8 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
                 OrderMode.RANDOM -> list.shuffled().toMutableList()
                 OrderMode.SEQUENTIAL -> list.toMutableList()
             }
-            currentIndex = 0
+            //currentIndex = 0
+            if (currentIndex >= cardOrder.size) currentIndex = 0
             _cards.value = cardOrder
             // Debug-only logging; suppressed in release
             if (DEBUG_LOGS) Log.d(TAG, "loadUnlearned size=${cardOrder.size}")
