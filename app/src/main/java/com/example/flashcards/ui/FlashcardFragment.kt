@@ -148,19 +148,45 @@ class FlashcardFragment : Fragment() {
         }
 
 
+//        viewModel.activeSetId.observe(viewLifecycleOwner) { activeId ->
+//            // Обновляем только прозрачность кнопок, не пересоздаём их
+//            val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+//            if (container != null) {
+//                for (i in 0 until container.childCount) {
+//                    val button = container.getChildAt(i) as? Button
+//                    if (button != null) {
+//                        val setId = button.text.toString().toIntOrNull() ?: 0
+//                        button.alpha = if (setId == activeId) 1.0f else 0.4f
+//                    }
+//                }
+//            }
+//        }
+
+//        viewModel.activeSetId.observe(viewLifecycleOwner) { activeId ->
+//            val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+//            if (container != null) {
+//                for (i in 0 until container.childCount) {
+//                    val button = container.getChildAt(i) as? Button ?: continue
+//                    val setId = button.text.toString().toIntOrNull() ?: 0
+//
+//                    if (setId == activeId) {
+//                        // Активный набор: яркий фон и белый текст
+//                        button.setBackgroundColor(0xFF2196F3.toInt()) // синий
+//                        button.setTextColor(0xFFFFFFFF.toInt())
+//                    } else {
+//                        // Неактивный: серый фон и тёмный текст
+//                        button.setBackgroundColor(0xFFCCCCCC.toInt())
+//                        button.setTextColor(0xFF000000.toInt())
+//                    }
+//                }
+//            }
+//        }
+
         viewModel.activeSetId.observe(viewLifecycleOwner) { activeId ->
-            // Обновляем только прозрачность кнопок, не пересоздаём их
-            val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
-            if (container != null) {
-                for (i in 0 until container.childCount) {
-                    val button = container.getChildAt(i) as? Button
-                    if (button != null) {
-                        val setId = button.text.toString().toIntOrNull() ?: 0
-                        button.alpha = if (setId == activeId) 1.0f else 0.4f
-                    }
-                }
-            }
+            Log.d(TAG, "activeSetId observer: $activeId")
+            updateActiveSetHighlight(activeId)
         }
+
 
         // Add Set button
         requireView().findViewById<Button>(R.id.btnAddSet)?.setOnClickListener {
@@ -811,7 +837,6 @@ class FlashcardFragment : Fragment() {
 
 
     private fun updateSetsUI(sets: List<CardSet>) {
-        // Если список наборов не изменился - не перерисовывать
         if (lastRenderedSets == sets) {
             Log.d(TAG, "updateSetsUI: sets unchanged, skipping")
             return
@@ -823,25 +848,20 @@ class FlashcardFragment : Fragment() {
 
         container?.removeAllViews()
 
-        val activeSetId = viewModel.activeSetId.value ?: 1
-
         sets.forEach { set ->
             Log.d(TAG, "  Adding button for set: id=${set.id}, name=${set.name}")
             val button = Button(requireContext()).apply {
                 text = set.name
+                tag = set.id                    // ← сохраняем id набора
                 layoutParams = LinearLayout.LayoutParams(
                     120, 120
-                ).apply {
-                    marginEnd = 16
-                }
-                alpha = if (set.id == activeSetId) 1.0f else 0.4f
+                ).apply { marginEnd = 16 }
                 textSize = 16f
                 gravity = Gravity.CENTER
 
                 setOnClickListener {
                     viewModel.switchToSet(set.id)
                 }
-
                 setOnLongClickListener {
                     showDeleteSetDialog(set)
                     true
@@ -849,7 +869,72 @@ class FlashcardFragment : Fragment() {
             }
             container?.addView(button)
         }
+
+        // После создания сразу один раз обновим подсветку по текущему activeSetId
+        viewModel.activeSetId.value?.let { id ->
+            updateActiveSetHighlight(id)
+        }
     }
+
+    private fun updateActiveSetHighlight(activeId: Int) {
+        val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+        if (container != null) {
+            for (i in 0 until container.childCount) {
+                val button = container.getChildAt(i) as? Button ?: continue
+                val setId = button.tag as? Int ?: 0
+
+                if (setId == activeId) {
+                    button.setBackgroundColor(0xFF2196F3.toInt()) // активный
+                    button.setTextColor(0xFFFFFFFF.toInt())
+                } else {
+                    button.setBackgroundColor(0xFFCCCCCC.toInt()) // неактивный
+                    button.setTextColor(0xFF000000.toInt())
+                }
+            }
+        }
+    }
+
+
+//    private fun updateSetsUI(sets: List<CardSet>) {
+//        // Если список наборов не изменился - не перерисовывать
+//        if (lastRenderedSets == sets) {
+//            Log.d(TAG, "updateSetsUI: sets unchanged, skipping")
+//            return
+//        }
+//        lastRenderedSets = sets
+//
+//        val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+//        Log.d(TAG, "updateSetsUI: ${sets.size} sets, container has ${container?.childCount} children")
+//
+//        container?.removeAllViews()
+//
+//        val activeSetId = viewModel.activeSetId.value ?: 1
+//
+//        sets.forEach { set ->
+//            Log.d(TAG, "  Adding button for set: id=${set.id}, name=${set.name}")
+//            val button = Button(requireContext()).apply {
+//                text = set.name
+//                layoutParams = LinearLayout.LayoutParams(
+//                    120, 120
+//                ).apply {
+//                    marginEnd = 16
+//                }
+//                alpha = if (set.id == activeSetId) 1.0f else 0.4f
+//                textSize = 16f
+//                gravity = Gravity.CENTER
+//
+//                setOnClickListener {
+//                    viewModel.switchToSet(set.id)
+//                }
+//
+//                setOnLongClickListener {
+//                    showDeleteSetDialog(set)
+//                    true
+//                }
+//            }
+//            container?.addView(button)
+//        }
+//    }
 
 //    private fun updateSetsUI(sets: List<CardSet>) {
 //        val activeSetId = viewModel.activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку!
