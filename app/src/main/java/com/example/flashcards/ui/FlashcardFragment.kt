@@ -1,21 +1,37 @@
 package com.example.flashcards.ui
 
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
+// ... другие существующие импорты ...
+
+// ДОБАВЬТЕ ЭТИ ИМПОРТЫ (если их нет):
+import android.widget.ProgressBar
+
+import kotlinx.coroutines.*
+import java.net.URL
+import androidx.appcompat.app.AlertDialog
+import androidx.room.withTransaction
+import com.example.flashcards.data.FlashcardDatabase
+import com.example.flashcards.util.importCsvText
+
+
 import android.view.*
 import android.util.Log
 import com.example.flashcards.R
 import android.widget.EditText
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
-import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import com.example.flashcards.databinding.FragmentFlashcardBinding
 import com.example.flashcards.viewmodel.FlashcardViewModel
 import com.example.flashcards.viewmodel.FlashcardViewModelFactory
 import com.example.flashcards.repository.FlashcardRepository
-import com.example.flashcards.data.FlashcardDatabase
-import com.example.flashcards.util.importCsvText
+
+//import com.example.flashcards.util.importCsvText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -23,16 +39,22 @@ import kotlinx.coroutines.withTimeout
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
-import java.net.URL
+
 import android.content.Context
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
-import android.widget.ProgressBar
+
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
-import androidx.room.withTransaction
+//import androidx.room.withTransaction
+import android.widget.Button
+import android.view.Gravity
+import com.example.flashcards.data.CardSet
+//mport androidx.lifecycle.lifecycleScope
+
 
 class FlashcardFragment : Fragment() {
+    private var lastRenderedSets: List<CardSet>? = null
     override fun onPause() {
         super.onPause()
         viewModel.saveCurrentCardIdx(requireContext())
@@ -86,16 +108,68 @@ class FlashcardFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 
         super.onViewCreated(view, savedInstanceState)
+
+        // Observer для cards - будет вызываться каждый раз когда cards обновляется
+        viewModel.cards.observe(viewLifecycleOwner) { cards ->
+            Log.d(TAG, "cards observer: ${cards.size} cards, isReloading=$isReloading")
+
+            if (cards.isNotEmpty()) {
+                if (!isReloading) {
+                    // Только если не вручную уже переключили карточку
+                    showingSide1 = viewModel.showSide1First
+                    resetSeenForCurrentCard()
+                    showCurrentCard()
+                }
+                updateShowLearnedButtonText()
+            } else {
+                binding.cardText.text = "No cards available"
+            }
+
+            // Сбрасываем флаг после обработки
+            isReloading = false
+        }
+
+        // Load card sets first
+        viewModel.loadSets()
+
         // Восстановить позицию карточки
-                viewModel.restoreCurrentCardIdx(requireContext())
+        viewModel.restoreCurrentCardIdx(requireContext())
 
         //viewModel.restoreCurrentCardIdx(requireContext())
 
         // Debug logs are printed only when DEBUG_LOGS is enabled; silenced in release.
         if (DEBUG_LOGS) Log.d(TAG, "onViewCreated")
+
+
+        // Observe card sets
+        viewModel.cardSets.observe(viewLifecycleOwner) { sets ->
+            Log.d(TAG, "cardSets observer: ${sets.size} sets")
+            updateSetsUI(sets)
+        }
+
+
+        viewModel.activeSetId.observe(viewLifecycleOwner) { activeId ->
+            // Обновляем только прозрачность кнопок, не пересоздаём их
+            val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+            if (container != null) {
+                for (i in 0 until container.childCount) {
+                    val button = container.getChildAt(i) as? Button
+                    if (button != null) {
+                        val setId = button.text.toString().toIntOrNull() ?: 0
+                        button.alpha = if (setId == activeId) 1.0f else 0.4f
+                    }
+                }
+            }
+        }
+
+        // Add Set button
+        requireView().findViewById<Button>(R.id.btnAddSet)?.setOnClickListener {
+            showCreateSetDialog()
+        }
+
         // Initialize order mode from saved preference before observing/initial loads
         val prefs = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val savedOrder = prefs.getString("order_mode", "RANDOM")
+        val savedOrder = prefs.getString("order_mode", "SEQUENTIAL")
         val initialMode = if (savedOrder == "SEQUENTIAL")
             com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL
         else com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.RANDOM
@@ -113,17 +187,17 @@ class FlashcardFragment : Fragment() {
         }
         updateOrderToggleLabel()
 
-        viewModel.cards.observe(viewLifecycleOwner) {
-            if (DEBUG_LOGS) Log.d(TAG, "cards observer size=${it.size}")
-            if (!isReloading) {
-                clearHistory()
-                showingSide1 = viewModel.showSide1First
-                resetSeenForCurrentCard()
-                showCurrentCard()
-            }
-            //showCurrentCard()
-            isReloading = false
-        }
+//        viewModel.cards.observe(viewLifecycleOwner) {
+//            if (DEBUG_LOGS) Log.d(TAG, "cards observer size=${it.size}")
+//            if (!isReloading) {
+//                clearHistory()
+//                showingSide1 = viewModel.showSide1First
+//                resetSeenForCurrentCard()
+//                showCurrentCard()
+//            }
+//            //showCurrentCard()
+//            isReloading = false
+//        }
 
 //        viewModel.cards.observe(viewLifecycleOwner) {
 //            if (DEBUG_LOGS) Log.d(TAG, "cards observer size=${it.size}")
@@ -133,37 +207,62 @@ class FlashcardFragment : Fragment() {
 //            resetSeenForCurrentCard()
 //            showCurrentCard()
 //        }
+//        binding.btnLearned.setOnClickListener {
+//            if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
+//            viewModel.getCurrentCard()?.let {
+//                // Toggle learned status depending on which set we're viewing
+//                if (currentFilter == Filter.LEARNED) {
+//                    viewModel.markUnlearned(it)
+//                } else {
+//                    // For UNLEARNED or ALL -> mark as learned
+//                    viewModel.markLearned(it)
+//                }
+//            }
+//
+//            // ВСЕГДА переходим на следующую карточку после пометки
+//            viewModel.nextCard()
+//           showingSide1 = viewModel.showSide1First
+//            resetSeenForCurrentCard()
+//            showCurrentCard()
+//
+//
+//            // Если работаем под фильтром LEARNED или UNLEARNED — перезагружаем список,
+//            // чтобы помеченная карточка исчезла из текущего набора
+//            if (currentFilter == Filter.LEARNED || currentFilter == Filter.UNLEARNED) {
+//                //isReloading = true
+//                reloadAccordingToFilter()
+//
+//            } else {
+//                // Для ALL фильтра — вручную переходим на следующую
+//                viewModel.nextCard()
+//                showingSide1 = viewModel.showSide1First
+//                resetSeenForCurrentCard()
+//                showCurrentCard()
+//            }
+//        }
+
         binding.btnLearned.setOnClickListener {
             if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
-            viewModel.getCurrentCard()?.let {
-                // Toggle learned status depending on which set we're viewing
+
+            viewModel.getCurrentCard()?.let { card ->
                 if (currentFilter == Filter.LEARNED) {
-                    viewModel.markUnlearned(it)
+                    viewModel.markUnlearned(card)
                 } else {
-                    // For UNLEARNED or ALL -> mark as learned
-                    viewModel.markLearned(it)
+                    // UNLEARNED или ALL -> помечаем как изученную
+                    viewModel.markLearned(card)
                 }
             }
 
-            // ВСЕГДА переходим на следующую карточку после пометки
+            // ВСЕГДА переходим на следующую карточку сразу
             viewModel.nextCard()
-           showingSide1 = viewModel.showSide1First
+            showingSide1 = viewModel.showSide1First
             resetSeenForCurrentCard()
             showCurrentCard()
 
-
-            // Если работаем под фильтром LEARNED или UNLEARNED — перезагружаем список,
-            // чтобы помеченная карточка исчезла из текущего набора
+            // Для фильтров перезагружаем список в фоне (чтобы убрать помеченную карточку)
             if (currentFilter == Filter.LEARNED || currentFilter == Filter.UNLEARNED) {
-                //isReloading = true
+                isReloading = true  // Блокируем повторное обновление от observer
                 reloadAccordingToFilter()
-
-            } else {
-                // Для ALL фильтра — вручную переходим на следующую
-                viewModel.nextCard()
-                showingSide1 = viewModel.showSide1First
-                resetSeenForCurrentCard()
-                showCurrentCard()
             }
         }
 
@@ -389,6 +488,8 @@ class FlashcardFragment : Fragment() {
 
     private fun showCurrentCard() {
         val card = viewModel.getCurrentCard()
+        Log.d(TAG, "showCurrentCard: card=$card")
+        Log.d(TAG, "  id=${card?.id}, side1='${card?.side1}', side2='${card?.side2}'")
         binding.cardText.text = when {
             card == null -> getString(R.string.empty_state)
             showingSide1 -> card.side1.joinToString("\n")
@@ -398,6 +499,8 @@ class FlashcardFragment : Fragment() {
         if (card != null) {
             if (showingSide1) seenSide1 = true else seenSide2 = true
         }
+        //val text = if (showingSide1) card.side1 else card.side2
+        //Log.d(TAG, "  Displaying: showingSide1=$showingSide1, text='$text'")
         updateDebugInfo()
     }
 
@@ -432,6 +535,7 @@ class FlashcardFragment : Fragment() {
         _binding = null
     }
 
+
     private fun showDownloadDialog() {
         val ctx = requireContext()
         val input = EditText(ctx)
@@ -453,59 +557,97 @@ class FlashcardFragment : Fragment() {
             .show()
     }
 
-    private fun downloadAndImport(link: String) {
-        val ctx = requireContext().applicationContext
-        val dao = FlashcardDatabase.getDatabase(ctx).flashcardDao()
-        val urlToUse = convertDriveLinkToDirect(link)
-        // Hide keyboard if visible
-        try {
-            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
-        } catch (_: Exception) {}
 
-        binding.btnDownload.isEnabled = false
-        showProgress(getString(R.string.downloading))
+    private fun downloadAndImport(url: String) {
 
-        lifecycleScope.launch {
+        val urlToUse = convertDriveLinkToDirect(url)
+        //val downloadUrl = convertGoogleDriveUrl(url) // Добавить эту строку
+        val progressBar = view?.findViewById<ProgressBar>(R.id.progressBar)
+        progressBar?.visibility = View.VISIBLE
+
+        viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val text = withTimeout(60_000) { withContext(Dispatchers.IO) { downloadText(urlToUse) } }
-                if (text.isBlank()) throw IllegalStateException("Empty CSV content")
-                showProgress(getString(R.string.importing))
-                // Perform bulk import within a single Room transaction to significantly
-                // speed up many small writes and avoid timeouts on large datasets.
+                // 1. Загрузить CSV из URL
+                val csvText = withContext(Dispatchers.IO) {
+                    try {
+                        val connection = URL(urlToUse).openConnection()
+                        connection.connectTimeout = 30000
+                        connection.readTimeout = 30000
+                        connection.getInputStream().bufferedReader().use { it.readText() }
+                    } catch (e: Exception) {
+                        Log.e("FlashcardFragment", "Download error", e)
+                        throw e
+                    }
+                }
+
+                // 2. Импортировать в БД (в активный набор)
                 val summary = withTimeout(120_000) {
                     withContext(Dispatchers.IO) {
+                        val ctx = requireContext()
                         val db = FlashcardDatabase.getDatabase(ctx)
+                        val dao = db.flashcardDao()
+                        val activeSetId = viewModel.activeSetId.value ?: 1
+
                         db.withTransaction {
-                            importCsvText(text, dao)
+                            importCsvText(csvText, dao, activeSetId)
                         }
                     }
                 }
-                reloadAccordingToFilter()
-                // Persist last import summary for statistics screen
-                try {
-                    val prefs = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    prefs.edit()
-                        .putInt("last_import_records", summary.records)
-                        .putInt("last_import_inserted", summary.inserted)
-                        .putInt("last_import_updated", summary.updated)
-                        .apply()
-                } catch (_: Exception) {}
-                // Show concise import summary so the user can verify completeness quickly
-                val msg = getString(R.string.toast_cards_updated) +
-                        " (records=" + summary.records +
-                        ", updated=" + summary.updated +
-                        ", inserted=" + summary.inserted + ")"
-                Toast.makeText(requireContext(), msg, Toast.LENGTH_LONG).show()
+
+                // 3. Показать результат
+                progressBar?.visibility = View.GONE
+
+                val message = buildString {
+                    append("Imported successfully!\n")
+                    append("Records: ${summary.records}\n")
+                    append("New: ${summary.inserted}\n")
+                    append("Updated: ${summary.updated}")
+                }
+
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Import Complete")
+                    .setMessage(message)
+                    .setPositiveButton("OK", null)
+                    .show()
+
+                if (DEBUG_LOGS) {
+                    Log.d(TAG, "Import summary: records=${summary.records}, inserted=${summary.inserted}, updated=${summary.updated}")
+                }
+
+                // 4. Перезагрузить карточки и показать первую
+                Log.d(TAG, "Before loadUnlearned")
+                viewModel.loadUnlearned()
+                //delay(100)
+                //Log.d(TAG, "After loadUnlearned, cards=${viewModel.cards.value?.size}")
+
+                //showingSide1 = viewModel.showSide1First
+                //resetSeenForCurrentCard()
+                //showCurrentCard()
+                //Log.d(TAG, "After showCurrentCard")
+
+
+            } catch (e: TimeoutCancellationException) {
+                progressBar?.visibility = View.GONE
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Import Timeout")
+                    .setMessage("Import took too long. The file may be too large.")
+                    .setPositiveButton("OK", null)
+                    .show()
+                Log.e(TAG, "Import timeout", e)
+
             } catch (e: Exception) {
-                Log.e(TAG, "Download/import failed", e)
-                Toast.makeText(requireContext(), getString(R.string.toast_failed_prefix) + ": ${e.message}", Toast.LENGTH_LONG).show()
-            } finally {
-                hideProgress()
-                binding.btnDownload.isEnabled = true
+                progressBar?.visibility = View.GONE
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Import Error")
+                    .setMessage("Failed to import: ${e.message}")
+                    .setPositiveButton("OK", null)
+                    .show()
+                Log.e(TAG, "Import error", e)
             }
         }
     }
+
+
 
     private fun reloadAccordingToFilter() {
         //isReloading = true
@@ -666,4 +808,124 @@ class FlashcardFragment : Fragment() {
         val mode = viewModel.getOrderMode()
         binding.btnOrder.text = if (mode == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL) "SEQ" else "RND"
     }
+
+
+    private fun updateSetsUI(sets: List<CardSet>) {
+        // Если список наборов не изменился - не перерисовывать
+        if (lastRenderedSets == sets) {
+            Log.d(TAG, "updateSetsUI: sets unchanged, skipping")
+            return
+        }
+        lastRenderedSets = sets
+
+        val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+        Log.d(TAG, "updateSetsUI: ${sets.size} sets, container has ${container?.childCount} children")
+
+        container?.removeAllViews()
+
+        val activeSetId = viewModel.activeSetId.value ?: 1
+
+        sets.forEach { set ->
+            Log.d(TAG, "  Adding button for set: id=${set.id}, name=${set.name}")
+            val button = Button(requireContext()).apply {
+                text = set.name
+                layoutParams = LinearLayout.LayoutParams(
+                    120, 120
+                ).apply {
+                    marginEnd = 16
+                }
+                alpha = if (set.id == activeSetId) 1.0f else 0.4f
+                textSize = 16f
+                gravity = Gravity.CENTER
+
+                setOnClickListener {
+                    viewModel.switchToSet(set.id)
+                }
+
+                setOnLongClickListener {
+                    showDeleteSetDialog(set)
+                    true
+                }
+            }
+            container?.addView(button)
+        }
+    }
+
+//    private fun updateSetsUI(sets: List<CardSet>) {
+//        val activeSetId = viewModel.activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку!
+//        // val container = binding.setsContainer
+//        val container = requireView().findViewById<LinearLayout>(R.id.setsContainer)
+//        Log.d(TAG, "updateSetsUI: ${sets.size} sets, container has ${container?.childCount} children")
+////        val container = binding.setsContainer
+//        container.removeAllViews()
+//
+//     //   val activeSetId = viewModel.activeSetId.value ?: 1
+//     //   db.withTransaction {
+//     //       importCsvText(text, dao, activeSetId)
+//     //   }
+//
+//
+//        sets.forEach { set ->
+//            Log.d(TAG, "  Adding button for set: id=${set.id}, name=${set.name}")
+//            val button = Button(requireContext()).apply {
+//                text = set.id.toString()
+//                val size = resources.getDimensionPixelSize(android.R.dimen.app_icon_size) // или 48dp
+//                layoutParams = LinearLayout.LayoutParams(size, size).apply {
+//                    marginEnd = 16
+//                }
+//                alpha = if (set.id == activeSetId) 1.0f else 0.4f
+//                textSize = 16f
+//                gravity = Gravity.CENTER
+//                setOnClickListener {
+//                    viewModel.switchToSet(set.id)
+//                }
+//                setOnLongClickListener {
+//                    showDeleteSetDialog(set)
+//                    true
+//                }
+//            }
+//            container.addView(button)
+//        }
+//    }
+
+    private fun showCreateSetDialog() {
+        val input = EditText(requireContext()).apply {
+            hint = "Set name (optional)"
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Create new card set")
+            .setView(input)
+            .setPositiveButton("Create") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    viewModel.createNewSet(name)
+                } else {
+                    val nextNumber = (viewModel.cardSets.value?.size ?: 0) + 1
+                    viewModel.createNewSet("Set $nextNumber")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showDeleteSetDialog(set: CardSet) {
+        if (set.id == 1) {
+            Toast.makeText(requireContext(), "Cannot delete the default set", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete set?")
+            .setMessage("Delete \"${set.name}\"? All cards in this set will be deleted.")
+            .setPositiveButton("Delete") { _, _ ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    viewModel.deleteSet(set.id)
+                    viewModel.loadSets()
+                    Toast.makeText(requireContext(), "Set deleted", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
 }

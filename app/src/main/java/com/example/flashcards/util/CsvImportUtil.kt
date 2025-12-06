@@ -1,5 +1,6 @@
 package com.example.flashcards.util
 
+import android.util.Log
 import com.example.flashcards.data.Flashcard
 import com.example.flashcards.data.FlashcardDao
 
@@ -16,8 +17,9 @@ data class ImportSummary(
  * - If a card ID does not exist: it is inserted with learned=false.
  * - Cards missing from CSV are left untouched (not removed).
  */
-suspend fun importCsvLines(csvLines: List<String>, dao: FlashcardDao): ImportSummary {
+suspend fun importCsvLines(csvLines: List<String>, dao: FlashcardDao, setId: Int = 1): ImportSummary {
     if (csvLines.isEmpty()) return ImportSummary(records = 0, updated = 0, inserted = 0)
+
 
     // Parse header with CSV rules (quotes, commas, escaped quotes) and strip UTF-8 BOM if present
     var headers = parseCsvLine(csvLines[0])
@@ -38,6 +40,7 @@ suspend fun importCsvLines(csvLines: List<String>, dao: FlashcardDao): ImportSum
         if (elements.isEmpty()) continue
 
         val rawId = elements.getOrNull(0)?.trim().orEmpty()
+        Log.d("ImportTAG", "rawId: setId=$rawId")
         if (rawId.isEmpty()) continue
 
         records++
@@ -46,10 +49,10 @@ suspend fun importCsvLines(csvLines: List<String>, dao: FlashcardDao): ImportSum
         val side2 = idxSide2.mapNotNull { idx -> elements.getOrNull(idx)?.trim() }.filter { it.isNotEmpty() }
 
         // Try to update existing card's sides (preserving learned status)
-        val wasUpdated: Int = dao.updateSides(rawId, side1, side2)
+        val wasUpdated: Int = dao.updateSides(rawId, setId, side1, side2)
         if (wasUpdated == 0) {
             // Not present -> insert new with learned=false by default
-            dao.insertCard(Flashcard(id = rawId, side1 = side1, side2 = side2, isLearned = false))
+            dao.insertCard(Flashcard(id = rawId, setId = setId, side1 = side1, side2 = side2, isLearned = false))
             inserted++
         } else {
             updated++
@@ -62,12 +65,12 @@ suspend fun importCsvLines(csvLines: List<String>, dao: FlashcardDao): ImportSum
  * Import CSV from raw text. Unlike importCsvLines(), this function correctly groups records
  * across physical lines when fields contain embedded newlines inside quoted cells.
  */
-suspend fun importCsvText(csvText: String, dao: FlashcardDao): ImportSummary {
-    // Fast path: if empty text, nothing to do
+suspend fun importCsvText(csvText: String, dao: FlashcardDao, setId: Int = 1): ImportSummary {
+// Fast path: if empty text, nothing to do
     if (csvText.isBlank()) return ImportSummary(records = 0, updated = 0, inserted = 0)
 
     val records = splitCsvRecords(csvText)
-    return importCsvLines(records, dao)
+    return importCsvLines(records, dao, setId)
 }
 
 // --- Simple RFC 4180-like CSV parser helpers ---

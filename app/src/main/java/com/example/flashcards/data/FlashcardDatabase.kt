@@ -1,21 +1,45 @@
 package com.example.flashcards.data
 
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import androidx.sqlite.db.SupportSQLiteDatabase
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [Flashcard::class], version = 1)
+@Database(
+    entities = [Flashcard::class, CardSet::class],  // добавьте CardSet
+    version = 2,  // было 1
+    exportSchema = false
+)
 @TypeConverters(StringListConverter::class)
-abstract class FlashcardDatabase : RoomDatabase() {
+abstract class  FlashcardDatabase : RoomDatabase() {
     abstract fun flashcardDao(): FlashcardDao
 
     companion object {
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS card_sets (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        isActive INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+
+                database.execSQL("ALTER TABLE flashcards ADD COLUMN setId INTEGER NOT NULL DEFAULT 1")
+
+                database.execSQL("INSERT INTO card_sets (id, name, createdAt, isActive) VALUES (1, 'Set 1', ${System.currentTimeMillis()}, 1)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: FlashcardDatabase? = null
 
@@ -33,7 +57,7 @@ abstract class FlashcardDatabase : RoomDatabase() {
                             INSTANCE?.let { database ->
                                 CoroutineScope(Dispatchers.IO).launch {
                                     val dao = database.flashcardDao()
-                                    if (dao.getAll().isEmpty()) {
+                                    if (dao.getAllBySet(1).isEmpty()) {
                                         try {
                                             dao.insertCard(
                                                 Flashcard(
@@ -51,6 +75,7 @@ abstract class FlashcardDatabase : RoomDatabase() {
                             }
                         }
                     })
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                 INSTANCE = instance
                 instance

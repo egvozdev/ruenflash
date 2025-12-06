@@ -1,16 +1,21 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical"
-    android:layout_width="match_parent" android:layout_height="match_parent">
-    <!-- Top bar with Help (?), Language toggle (RU/EN), Stats ("123"), Order (RND/SEQ),
-         and on the right: Download, Close (X) -->
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Top bar: Help, Language, Stats, Order, Download, Exit -->
     <LinearLayout
         android:id="@+id/topBar"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp">
-        <!-- Help moved to the left side -->
+        android:padding="8dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+        
         <ImageButton
             android:id="@+id/btnHelp"
             android:layout_width="wrap_content"
@@ -18,7 +23,7 @@
             android:contentDescription="@string/cd_help"
             android:background="@android:color/transparent"
             android:src="@android:drawable/ic_menu_help" />
-        <!-- Language toggle (shows the target language code to switch to) -->
+        
         <TextView
             android:id="@+id/btnLang"
             android:layout_width="wrap_content"
@@ -31,8 +36,8 @@
             android:background="@android:color/transparent"
             android:clickable="true"
             android:focusable="true"
-            android:layout_marginStart="8dp"/>
-        <!-- Stats control styled like the icon buttons: transparent background, compact, text-only label "123" -->
+            android:layout_marginStart="8dp" />
+        
         <TextView
             android:id="@+id/btnStats"
             android:layout_width="wrap_content"
@@ -45,8 +50,8 @@
             android:background="@android:color/transparent"
             android:clickable="true"
             android:focusable="true"
-            android:layout_marginStart="8dp"/>
-        <!-- Order toggle: shows current order mode (RND/SEQ) -->
+            android:layout_marginStart="8dp" />
+        
         <TextView
             android:id="@+id/btnOrder"
             android:layout_width="wrap_content"
@@ -59,12 +64,13 @@
             android:background="@android:color/transparent"
             android:clickable="true"
             android:focusable="true"
-            android:layout_marginStart="8dp"/>
+            android:layout_marginStart="8dp" />
+
         <View
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
-        <!-- Download moved to top bar, placed before close button -->
+        
         <ImageButton
             android:id="@+id/btnDownload"
             android:layout_width="wrap_content"
@@ -76,7 +82,7 @@
             app:tint="?attr/colorControlNormal"
             android:padding="4dp"
             android:layout_marginEnd="8dp" />
-        <!-- Close (Exit) moved to top-right -->
+        
         <ImageButton
             android:id="@+id/btnExit"
             android:layout_width="wrap_content"
@@ -85,26 +91,102 @@
             android:background="@android:color/transparent"
             android:src="@android:drawable/ic_menu_close_clear_cancel" />
     </LinearLayout>
+
+    <!-- Card Sets Row (после topBar) -->
+    <HorizontalScrollView
+        android:id="@+id/setsScrollView"
+        android:layout_width="0dp"
+        android:layout_height="48dp"
+        android:scrollbars="none"
+        android:background="?attr/colorSurface"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btnAddSet">
+        
+        <LinearLayout
+            android:id="@+id/setsContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:gravity="center_vertical"/>
+    </HorizontalScrollView>
+
+    <Button
+        android:id="@+id/btnAddSet"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:text="+"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Card Text (центральная область) -->
     <TextView
         android:id="@+id/cardText"
-        android:textSize="32sp"
-        android:gravity="center"
-        android:layout_weight="1"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="0dp"
-        android:lineSpacingMultiplier="1.2" />
-    <!-- Debug overlay (hidden by default). Long-press cardText to toggle. -->
+        android:gravity="center"
+        android:lineSpacingMultiplier="1.2"
+        android:textSize="32sp"
+        app:layout_constraintTop_toBottomOf="@id/setsScrollView"
+        app:layout_constraintBottom_toTopOf="@id/btnLearned"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Debug info -->
     <TextView
         android:id="@+id/debugInfo"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:textSize="12sp"
         android:padding="8dp"
         android:textColor="#FF4444"
         android:background="#22FF4444"
-        android:visibility="gone" />
-    <!-- Buttons order: 1) Learned/Unlearned/Delete, 2) Switch, 3) Show learned -->
-    <Button android:id="@+id/btnLearned" android:text="@string/btn_learned_toggle" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    <Button android:id="@+id/btnSwitchSide" android:text="@string/switch_side" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    <Button android:id="@+id/btnShowLearned" android:text="@string/show_learned" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-</LinearLayout>
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/cardText"
+        app:layout_constraintBottom_toTopOf="@id/btnLearned"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Bottom buttons -->
+    <Button
+        android:id="@+id/btnLearned"
+        android:text="@string/btn_learned_toggle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toTopOf="@id/btnSwitchSide"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <Button
+        android:id="@+id/btnSwitchSide"
+        android:text="@string/switch_side"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toTopOf="@id/btnShowLearned"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <Button
+        android:id="@+id/btnShowLearned"
+        android:text="@string/show_learned"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+	
+	<ProgressBar
+    android:id="@+id/progressBar"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:visibility="gone"
+    app:layout_constraintTop_toTopOf="parent"
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

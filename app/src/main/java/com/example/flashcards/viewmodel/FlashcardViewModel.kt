@@ -6,6 +6,7 @@ import com.example.flashcards.data.Flashcard
 import com.example.flashcards.repository.FlashcardRepository
 import kotlinx.coroutines.launch
 import android.content.Context
+import com.example.flashcards.data.CardSet
 
 class FlashcardViewModel(private val repository: FlashcardRepository) : ViewModel() {
     // Debug logging switch: set to true only while developing.
@@ -15,11 +16,72 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
     private val _cards = MutableLiveData<List<Flashcard>>()
     val cards: LiveData<List<Flashcard>> = _cards
 
+    private val _cardSets = MutableLiveData<List<CardSet>>()
+    val cardSets: LiveData<List<CardSet>> = _cardSets
+
+    private val _activeSetId = MutableLiveData<Int>(1)
+    val activeSetId: LiveData<Int> = _activeSetId
+
+
     private var cardOrder = mutableListOf<Flashcard>()
     private var currentIndex = 0
     var showSide1First = true
     enum class OrderMode { RANDOM, SEQUENTIAL }
     private var orderMode: OrderMode = OrderMode.RANDOM
+    fun deleteSet(setId: Int) {
+        viewModelScope.launch {
+            repository.deleteSet(setId)
+            // Switch to default set if deleted active
+            if (_activeSetId.value == setId) {
+                switchToSet(1)
+            }
+        }
+    }
+
+        // Card Sets operations
+        fun loadSets() {
+            viewModelScope.launch {
+                val sets = repository.getAllSets()
+
+                // Если наборов нет — создать первый
+                if (sets.isEmpty()) {
+                    repository.createSet("1")
+                    repository.setActiveSet(1)
+                    _cardSets.value = repository.getAllSets()
+                    _activeSetId.value = 1
+                } else {
+                    _cardSets.value = sets
+                    val active = repository.getActiveSet()
+                    _activeSetId.value = active?.id ?: sets.firstOrNull()?.id ?: 1
+                }
+
+                if (DEBUG_LOGS) Log.d(
+                    TAG,
+                    "loadSets: ${_cardSets.value?.size}, active=${_activeSetId.value}"
+                )
+            }
+        }
+
+        fun createNewSet(name: String) {
+                viewModelScope.launch {
+                        val newId = repository.createSet(name).toInt()
+                        loadSets()
+                        if (DEBUG_LOGS) Log.d(TAG, "createNewSet: $name, id=$newId")
+                    }
+            }
+
+       fun switchToSet(setId: Int) {
+                viewModelScope.launch {
+                        repository.setActiveSet(setId)
+                        _activeSetId.value = setId
+                        // Reload cards for new set
+                        loadUnlearned()
+                        if (DEBUG_LOGS) Log.d(TAG, "switchToSet: $setId")
+                    }
+            }
+
+        // Existing methods - save/restore position
+
 
     // Сохранение индекса текущей карточки при выходе
     fun saveCurrentCardIdx(context: Context) {
@@ -44,8 +106,9 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
 //    }
 
     fun loadCards(learnedOnly: Boolean = false) {
+        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
         viewModelScope.launch {
-            val list = if (learnedOnly) repository.getCardsByStatus(true) else repository.getAll()
+            val list = if (learnedOnly) repository.getCardsByStatus(true, setId) else repository.getAll(setId)
             cardOrder = when (orderMode) {
                 OrderMode.RANDOM -> list.shuffled().toMutableList()
                 OrderMode.SEQUENTIAL -> list.toMutableList()
@@ -59,8 +122,10 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
     }
 
     fun loadUnlearned() {
+        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
         viewModelScope.launch {
-            val list = repository.getCardsByStatus(false)
+            val list = repository.getCardsByStatus(false, setId)
+            Log.d(TAG, "loadUnlearned: setId=$setId, found ${list.size} cards")
             cardOrder = when (orderMode) {
                 OrderMode.RANDOM -> list.shuffled().toMutableList()
                 OrderMode.SEQUENTIAL -> list.toMutableList()
@@ -113,15 +178,17 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
         return getCurrentCard()
     }
     fun markLearned(card: Flashcard) {
+        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
         viewModelScope.launch {
-            repository.updateLearnedStatus(card.id, true)
+            repository.updateLearnedStatus(card.id, true, setId)
             cardOrder.getOrNull(currentIndex)?.isLearned = true
             if (DEBUG_LOGS) Log.d(TAG, "markLearned id=${card.id}")
         }
     }
     fun markUnlearned(card: Flashcard) {
+        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
         viewModelScope.launch {
-            repository.updateLearnedStatus(card.id, false)
+            repository.updateLearnedStatus(card.id, false, setId)
             cardOrder.getOrNull(currentIndex)?.isLearned = false
             if (DEBUG_LOGS) Log.d(TAG, "markUnlearned id=${card.id}")
         }
@@ -134,8 +201,9 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
 
     fun deleteCurrentCard(onCompleted: (() -> Unit)? = null) {
         val card = getCurrentCard() ?: return
+        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
         viewModelScope.launch {
-            repository.deleteById(card.id)
+            repository.deleteById(card.id, setId)
             // Remove from in-memory list and adjust index
             if (currentIndex in cardOrder.indices) {
                 cardOrder.removeAt(currentIndex)
@@ -161,10 +229,11 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
 
     // Returns statistics via callback: learned, not learned, total.
     fun getStats(onResult: (learned: Int, notLearned: Int, total: Int) -> Unit) {
+        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
         viewModelScope.launch {
             // Repository methods already run on IO dispatcher
-            val learnedCount = repository.getCardsByStatus(true).size
-            val notLearnedCount = repository.getCardsByStatus(false).size
+            val learnedCount = repository.getCardsByStatus(true,setId).size
+            val notLearnedCount = repository.getCardsByStatus(false, setId).size
             val total = learnedCount + notLearnedCount
             if (DEBUG_LOGS) Log.d(TAG, "getStats -> learned=$learnedCount not=$notLearnedCount total=$total")
             onResult(learnedCount, notLearnedCount, total)

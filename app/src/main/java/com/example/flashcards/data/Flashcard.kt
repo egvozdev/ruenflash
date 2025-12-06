@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 @TypeConverters(StringListConverter::class)
 data class Flashcard(
     @PrimaryKey val id: String,
+    val setId: Int = 1,
     val side1: List<String>,
     val side2: List<String>,
     var isLearned: Boolean = false
