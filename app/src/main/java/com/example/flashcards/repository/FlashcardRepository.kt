@@ -6,16 +6,33 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.example.flashcards.data.CardSet
 
+import androidx.room.Transaction
 
-/**
+
+class FlashcardRepository(private val dao: FlashcardDao) {
+
+    @Transaction
+    suspend fun deleteSetWithCards(setId: Int) {
+        dao.deleteCardsBySetId(setId)
+        dao.deleteSetById(setId)
+    }
+
+    @Transaction
+    suspend fun clearSetCards(setId: Int) {
+        dao.deleteCardsBySetId(setId)
+    }
+
+
+    /**
  * Repository layer that guarantees all DAO calls occur on Dispatchers.IO to avoid
  * any chance of blocking the main thread and contributing to UI jank/ANRs.
  */
-class FlashcardRepository(private val dao: FlashcardDao) {
+
         // Card Sets operations
         suspend fun getAllSets() = withContext(Dispatchers.IO) {
                 dao.getAllSets()
     }
+
 
         suspend fun createSet(name: String): Long = withContext(Dispatchers.IO) {
                 dao.insertSet(CardSet(name = name))

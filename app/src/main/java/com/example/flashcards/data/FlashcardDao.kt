@@ -63,4 +63,10 @@ interface FlashcardDao {
     @Query("DELETE FROM flashcards WHERE setId = :setId")
     suspend fun deleteAllBySet(setId: Int)
 
+    @Query("DELETE FROM flashcards WHERE setId = :setId")
+    suspend fun deleteCardsBySetId(setId: Int)
+
+    @Query("DELETE FROM card_sets WHERE id = :setId")
+    suspend fun deleteSetById(setId: Int)
+
 }

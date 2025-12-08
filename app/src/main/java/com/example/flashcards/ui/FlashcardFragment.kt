@@ -55,6 +55,8 @@ import com.example.flashcards.data.CardSet
 
 class FlashcardFragment : Fragment() {
     private var lastRenderedSets: List<CardSet>? = null
+    private var lastCardIndex: Int? = null
+
     override fun onPause() {
         super.onPause()
         viewModel.saveCurrentCardIdx(requireContext())
@@ -64,6 +66,12 @@ class FlashcardFragment : Fragment() {
         super.onStop()
         viewModel.saveCurrentCardIdx(requireContext())
     }
+
+
+
+//    binding.btnDeleteSet.setOnClickListener {
+//        showDeleteCurrentSetDialog()
+//    }
 
     // Debug logging switch: set to true only while developing.
     // In release builds keep it false so debug logs are effectively commented out.
@@ -96,6 +104,22 @@ class FlashcardFragment : Fragment() {
     private var progressDialog: AlertDialog? = null
     private var isReloading = false
 
+    private fun showDeleteCurrentSetDialog() {
+        val ctx = requireContext()
+        val activeId = viewModel.activeSetId.value ?: return
+
+        AlertDialog.Builder(ctx)
+            .setTitle("Удалить набор")
+            .setMessage("Удалить текущий набор и все его карточки?")
+            .setPositiveButton("Удалить") { d, _ ->
+                d.dismiss()
+                viewModel.deleteCurrentSet {
+                    Toast.makeText(ctx, "Набор удалён", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Отмена") { d, _ -> d.dismiss() }
+            .show()
+    }
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentFlashcardBinding.inflate(inflater, container, false)
         return binding.root
@@ -110,22 +134,57 @@ class FlashcardFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         // Observer для cards - будет вызываться каждый раз когда cards обновляется
+//        viewModel.cards.observe(viewLifecycleOwner) { cards ->
+//            Log.d(TAG, "cards observer: ${cards.size} cards, isReloading=$isReloading")
+//
+//            if (cards.isNotEmpty()) {
+//                val currentIndex = viewModel.getCurrentIndex()
+//                Log.d(TAG, "  currentIndex=$currentIndex, lastCardIndex=$lastCardIndex")
+//                if (!isReloading && currentIndex != lastCardIndex) {
+//                    Log.d(TAG, "  → resetting seen flags")
+//                    // Только если не вручную уже переключили карточку
+//                    showingSide1 = viewModel.showSide1First
+//                    resetSeenForCurrentCard()
+//                    showCurrentCard()
+//                    lastCardIndex = currentIndex
+//                } else if (isReloading) {
+//                    Log.d(TAG, "  → isReloading=true, skip reset")
+//                    // Просто перерисовка после фильтра, флаги уже сброшены вручную
+//                    lastCardIndex = currentIndex
+//                } else {
+//                    Log.d(TAG, "  → same card index, skip reset")
+//                }
+//                updateShowLearnedButtonText()
+//            } else {
+//                binding.cardText.text = "No cards available"
+//            }
+//
+//            // Сбрасываем флаг после обработки
+//            isReloading = false
+//        }
         viewModel.cards.observe(viewLifecycleOwner) { cards ->
             Log.d(TAG, "cards observer: ${cards.size} cards, isReloading=$isReloading")
 
             if (cards.isNotEmpty()) {
+                val currentIndex = viewModel.getCurrentIndex()
+
                 if (!isReloading) {
-                    // Только если не вручную уже переключили карточку
+                    // список обновился (например, при смене набора) → просто показать текущую
                     showingSide1 = viewModel.showSide1First
                     resetSeenForCurrentCard()
+                    lastCardIndex = currentIndex
+                    showCurrentCard()
+                } else {
+                    // перезагрузка после mark learned в фильтрах: индекс уже выбрал VM
+                    lastCardIndex = currentIndex
                     showCurrentCard()
                 }
                 updateShowLearnedButtonText()
             } else {
-                binding.cardText.text = "No cards available"
+                binding.cardText.text = getString(R.string.empty_state)
+                lastCardIndex = null
             }
 
-            // Сбрасываем флаг после обработки
             isReloading = false
         }
 
@@ -184,7 +243,8 @@ class FlashcardFragment : Fragment() {
 
         viewModel.activeSetId.observe(viewLifecycleOwner) { activeId ->
             Log.d(TAG, "activeSetId observer: $activeId")
-            updateActiveSetHighlight(activeId)
+            val id = activeId ?: return@observe  // если null — выходим
+            updateActiveSetHighlight(id)
         }
 
 
@@ -267,28 +327,34 @@ class FlashcardFragment : Fragment() {
 //            }
 //        }
 
+//
         binding.btnLearned.setOnClickListener {
             if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
+            val card = viewModel.getCurrentCard() ?: return@setOnClickListener
 
-            viewModel.getCurrentCard()?.let { card ->
-                if (currentFilter == Filter.LEARNED) {
-                    viewModel.markUnlearned(card)
-                } else {
-                    // UNLEARNED или ALL -> помечаем как изученную
-                    viewModel.markLearned(card)
-                }
+            // Помечаем карточку
+            if (currentFilter == Filter.LEARNED) {
+                viewModel.markUnlearned(card)
+            } else {
+                viewModel.markLearned(card)
             }
 
-            // ВСЕГДА переходим на следующую карточку сразу
-            viewModel.nextCard()
-            showingSide1 = viewModel.showSide1First
-            resetSeenForCurrentCard()
-            showCurrentCard()
-
-            // Для фильтров перезагружаем список в фоне (чтобы убрать помеченную карточку)
-            if (currentFilter == Filter.LEARNED || currentFilter == Filter.UNLEARNED) {
-                isReloading = true  // Блокируем повторное обновление от observer
-                reloadAccordingToFilter()
+            when (currentFilter) {
+                Filter.ALL -> {
+                    // В режиме ALL двигаем индекс вручную ОДИН раз
+                    viewModel.nextCard()
+                    showingSide1 = viewModel.showSide1First
+                    resetSeenForCurrentCard()
+                    lastState = null
+                    showCurrentCard()
+                }
+                Filter.UNLEARNED, Filter.LEARNED -> {
+                    // В режимах с фильтром НИГДЕ не вызываем nextCard!
+                    showingSide1 = viewModel.showSide1First
+                    isReloading = true
+                    lastState = null
+                    reloadAccordingToFilter()
+                }
             }
         }
 
@@ -332,41 +398,30 @@ class FlashcardFragment : Fragment() {
         // Prevent platform default long-click handling to avoid accidental toggles.
         binding.cardText.isLongClickable = false
 
+//
+
         binding.cardText.setOnTouchListener { v, event ->
-            // Always feed events to the detector so long-press is recognized.
             longPressDetector.onTouchEvent(event)
             if (event.action == MotionEvent.ACTION_UP) {
+                Log.d(TAG, "tap: seenSide1=$seenSide1, seenSide2=$seenSide2, showingSide1=$showingSide1")
                 val width = v.width
                 val x = event.x
                 val leftThird = width / 3f
                 val total = viewModel.getTotalCount()
 
                 if (x <= leftThird) {
-                    // Если SEQUENTIAL: показывать первую сторону либо переходить циклически к предыдущей
-//                    if (viewModel.getOrderMode() == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL) {
-//                        if (!showingSide1) {
-//                            showingSide1 = true
-//                            showCurrentCard()
-//                        } else if (total > 0) {
-//                            viewModel.prevCard()
-//                            showingSide1 = viewModel.showSide1First
-//                            resetSeenForCurrentCard()
-//                            showCurrentCard()
-//                        }
-//                        return@setOnTouchListener true
-//                    }
-                    if (viewModel.getOrderMode() == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.SEQUENTIAL) {
-                        // Определяем "стартовую" сторону для текущего режима
+
+                    if (viewModel.getOrderMode() == FlashcardViewModel.OrderMode.SEQUENTIAL) {
                         val startSide = viewModel.showSide1First
 
-                        // Если сейчас показана НЕ стартовая сторона -> показать стартовую
                         if (showingSide1 != startSide) {
                             showingSide1 = startSide
+                            seenSide1 = false
+                            seenSide2 = false
                             showCurrentCard()
                             return@setOnTouchListener true
                         }
 
-                        // Если показана стартовая сторона -> к предыдущей карточке
                         if (total > 0) {
                             viewModel.prevCard()
                             showingSide1 = viewModel.showSide1First
@@ -375,10 +430,8 @@ class FlashcardFragment : Fragment() {
                         }
                         return@setOnTouchListener true
                     }
-                    // Special rule: in RANDOM mode, while showing the first side,
-                    // a left tap should advance to the next random card.
-                    if (viewModel.getOrderMode() == com.example.flashcards.viewmodel.FlashcardViewModel.OrderMode.RANDOM && showingSide1) {
-                        // Save current state for potential one-step back
+
+                    if (viewModel.getOrderMode() == FlashcardViewModel.OrderMode.RANDOM && showingSide1) {
                         saveCurrentDisplayState()
                         viewModel.nextCard()
                         showingSide1 = viewModel.showSide1First
@@ -386,33 +439,36 @@ class FlashcardFragment : Fragment() {
                         showCurrentCard()
                         return@setOnTouchListener true
                     }
+
                     // Go back to previously displayed part (works in both modes)
                     val prev = lastState
                     if (prev != null && total > 0) {
                         val curIndex = viewModel.getCurrentIndex()
                         val prevIndexIfWrapped = if (curIndex - 1 < 0) total - 1 else curIndex - 1
+
                         if (prev.index == curIndex) {
                             // Restore same card previous side
                             showingSide1 = prev.showingSide1
-                            seenSide1 = prev.seenSide1
-                            seenSide2 = prev.seenSide2
+                            seenSide1 = false          // ← ИЗМЕНЕНО
+                            seenSide2 = false          // ← ИЗМЕНЕНО
                             showCurrentCard()
-                            // do not overwrite history now
                             return@setOnTouchListener true
                         } else if (prev.index == prevIndexIfWrapped) {
                             // Restore previous card (one step back)
                             viewModel.prevCard()
                             showingSide1 = prev.showingSide1
-                            seenSide1 = prev.seenSide1
-                            seenSide2 = prev.seenSide2
+                            seenSide1 = false          // ← ИЗМЕНЕНО
+                            seenSide2 = false          // ← ИЗМЕНЕНО
                             showCurrentCard()
                             return@setOnTouchListener true
                         }
                     }
-                    // Fallback if we don't have valid history: show first part of current if on second,
-                    // otherwise go to previous card and start from configured order
+
+                    // Fallback
                     if (!showingSide1) {
                         showingSide1 = true
+                        seenSide1 = false              // ← ДОБАВЛЕНО
+                        seenSide2 = false              // ← ДОБАВЛЕНО
                         showCurrentCard()
                     } else if (total > 0) {
                         viewModel.prevCard()
@@ -425,26 +481,27 @@ class FlashcardFragment : Fragment() {
 
                 // Default behaviour (tap elsewhere): flip or advance if both sides already seen
                 val bothSeen = seenSide1 && seenSide2
+                Log.d(TAG, "tap center/right: bothSeen=$bothSeen")
+
                 if (bothSeen) {
-                    if (DEBUG_LOGS) Log.d(TAG, "both sides seen -> next card")
-                    // Save state before changing
+                    Log.d(TAG, "both sides seen -> next card")
                     saveCurrentDisplayState()
                     viewModel.nextCard()
                     showingSide1 = viewModel.showSide1First
                     resetSeenForCurrentCard()
                     showCurrentCard()
                 } else {
-                    if (DEBUG_LOGS) Log.d(TAG, "flip side")
-                    // Save state before changing
+                    Log.d(TAG, "flip side: showingSide1 was $showingSide1, now ${!showingSide1}")
                     saveCurrentDisplayState()
                     showingSide1 = !showingSide1
                     showCurrentCard()
                 }
                 return@setOnTouchListener true
             }
-            // For other touch events, consume to keep interaction consistent
             true
         }
+
+
         // Remove separate long-click listener to avoid duplicate/accidental triggers; handled by GestureDetector above.
         binding.btnShowLearned.setOnClickListener {
             if (DEBUG_LOGS) Log.d(TAG, "btnShowLearned click (toggle)")
@@ -994,23 +1051,34 @@ class FlashcardFragment : Fragment() {
     }
 
     private fun showDeleteSetDialog(set: CardSet) {
-        if (set.id == 1) {
-            Toast.makeText(requireContext(), "Cannot delete the default set", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val ctx = requireContext()
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("Delete set?")
-            .setMessage("Delete \"${set.name}\"? All cards in this set will be deleted.")
-            .setPositiveButton("Delete") { _, _ ->
-                viewLifecycleOwner.lifecycleScope.launch {
+        if (set.id == 1) {
+            // Для набора 1 — только очистка карточек
+            AlertDialog.Builder(ctx)
+                .setTitle("Очистить набор")
+                .setMessage("Удалить все карточки из набора \"${set.name}\"? Сам набор останется.")
+                .setPositiveButton("Очистить") { d, _ ->
+                    d.dismiss()
                     viewModel.deleteSet(set.id)
-                    viewModel.loadSets()
-                    Toast.makeText(requireContext(), "Set deleted", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "Карточки удалены", Toast.LENGTH_SHORT).show()
                 }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+                .setNegativeButton("Отмена") { d, _ -> d.dismiss() }
+                .show()
+        } else {
+            // Для остальных — полное удаление
+            AlertDialog.Builder(ctx)
+                .setTitle("Удалить набор")
+                .setMessage("Удалить набор \"${set.name}\" и все его карточки?")
+                .setPositiveButton("Удалить") { d, _ ->
+                    d.dismiss()
+                    viewModel.deleteSet(set.id)
+                    Toast.makeText(ctx, "Набор удалён", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Отмена") { d, _ -> d.dismiss() }
+                .show()
+        }
     }
+
 
 }

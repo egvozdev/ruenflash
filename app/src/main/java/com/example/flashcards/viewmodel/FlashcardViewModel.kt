@@ -19,8 +19,10 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
     private val _cardSets = MutableLiveData<List<CardSet>>()
     val cardSets: LiveData<List<CardSet>> = _cardSets
 
-    private val _activeSetId = MutableLiveData<Int>(1)
-    val activeSetId: LiveData<Int> = _activeSetId
+    private val _activeSetId = MutableLiveData<Int?>()  // ← добавь ?
+    val activeSetId: LiveData<Int?> get() = _activeSetId
+    //private val _activeSetId = MutableLiveData<Int>(1)
+    //val activeSetId: LiveData<Int> = _activeSetId
 
 
     private var cardOrder = mutableListOf<Flashcard>()
@@ -30,10 +32,19 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
     private var orderMode: OrderMode = OrderMode.RANDOM
     fun deleteSet(setId: Int) {
         viewModelScope.launch {
-            repository.deleteSet(setId)
-            // Switch to default set if deleted active
-            if (_activeSetId.value == setId) {
-                switchToSet(1)
+            if (setId == 1) {
+                // Набор 1 нельзя удалить, только очистить карточки
+                repository.clearSetCards(setId)
+                loadUnlearned()
+            } else {
+                // Остальные наборы удаляются полностью
+                repository.deleteSetWithCards(setId)
+                loadSets()
+
+                // Переключиться на первый оставшийся набор
+                val newActive = _cardSets.value?.firstOrNull()?.id ?: 1
+                _activeSetId.value = newActive
+                loadUnlearned()
             }
         }
     }
@@ -82,6 +93,22 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
 
         // Existing methods - save/restore position
 
+    fun deleteCurrentSet(onDone: () -> Unit = {}) {
+        val setId = _activeSetId.value ?: return
+        viewModelScope.launch {
+            repository.deleteSetWithCards(setId)
+            // после удаления переключиться на первый оставшийся набор
+            loadSets()
+            val newActive = _cardSets.value?.firstOrNull()?.id
+            _activeSetId.value = newActive
+            if (newActive != null) {
+                loadUnlearned()
+            } else {
+                _cards.value = emptyList()
+            }
+            onDone()
+        }
+    }
 
     // Сохранение индекса текущей карточки при выходе
     fun saveCurrentCardIdx(context: Context) {
@@ -139,6 +166,7 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
     }
     fun getCurrentCard(): Flashcard? = cardOrder.getOrNull(currentIndex)
     fun nextCard(): Flashcard? {
+        Log.d(TAG, "nextCard -> index=$currentIndex of ${cardOrder.size}")
         if (cardOrder.isEmpty()) {
             if (DEBUG_LOGS) Log.d(TAG, "nextCard -> no cards")
             return null

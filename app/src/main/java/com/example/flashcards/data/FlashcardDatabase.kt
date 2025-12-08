@@ -36,7 +36,7 @@ abstract class  FlashcardDatabase : RoomDatabase() {
 
                 database.execSQL("ALTER TABLE flashcards ADD COLUMN setId INTEGER NOT NULL DEFAULT 1")
 
-                database.execSQL("INSERT INTO card_sets (id, name, createdAt, isActive) VALUES (1, 'Set 1', ${System.currentTimeMillis()}, 1)")
+                database.execSQL("INSERT INTO card_sets (id, name, createdAt, isActive) VALUES (1, '1', ${System.currentTimeMillis()}, 1)")
             }
         }
 
