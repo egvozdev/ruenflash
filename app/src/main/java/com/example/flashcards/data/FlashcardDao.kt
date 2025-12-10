@@ -33,9 +33,11 @@ interface FlashcardDao {
     suspend fun insert(card: Flashcard)
 
 
-         @Query("UPDATE flashcards SET isLearned = :learned WHERE id = :id AND setId = :setId")
-        suspend fun updateLearnedStatus(id: String, learned: Boolean, setId: Int)
+ //        @Query("UPDATE flashcards SET isLearned = :learned WHERE id = :id AND setId = :setId")
+//        suspend fun updateLearnedStatus(id: String, learned: Boolean, setId: Int)
 
+    @Query("UPDATE flashcards SET isLearned = :isLearned WHERE id = :id AND setId = :setId")
+    suspend fun updateLearnedStatus(id: String, isLearned: Boolean, setId: Int)
 
         @Query("DELETE FROM flashcards WHERE id = :id AND setId = :setId")
         suspend fun deleteById(id: String, setId: Int)

@@ -148,22 +148,45 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
         }
     }
 
+//    fun loadUnlearned() {
+//        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
+//        viewModelScope.launch {
+//            val list = repository.getCardsByStatus(false, setId)
+//            Log.d(TAG, "loadUnlearned: setId=$setId, found ${list.size} cards")
+//            cardOrder = when (orderMode) {
+//                OrderMode.RANDOM -> list.shuffled().toMutableList()
+//                OrderMode.SEQUENTIAL -> list.toMutableList()
+//            }
+//            //currentIndex = 0
+//            if (currentIndex >= cardOrder.size) currentIndex = 0
+//            _cards.value = cardOrder
+//            // Debug-only logging; suppressed in release
+//            if (DEBUG_LOGS) Log.d(TAG, "loadUnlearned size=${cardOrder.size}")
+//        }
+//    }
+
     fun loadUnlearned() {
-        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
+        val setId = _activeSetId.value ?: 1
         viewModelScope.launch {
+            Log.d(TAG, "loadUnlearned: START query, setId=$setId")
             val list = repository.getCardsByStatus(false, setId)
+            Log.d(TAG, "loadUnlearned: GOT ${list.size} cards from DB")
             Log.d(TAG, "loadUnlearned: setId=$setId, found ${list.size} cards")
             cardOrder = when (orderMode) {
                 OrderMode.RANDOM -> list.shuffled().toMutableList()
                 OrderMode.SEQUENTIAL -> list.toMutableList()
             }
-            //currentIndex = 0
-            if (currentIndex >= cardOrder.size) currentIndex = 0
+            // ВАЖНО: сбрасываем индекс при каждой перезагрузке фильтра
+            if (currentIndex >= cardOrder.size && cardOrder.isNotEmpty()) {
+                currentIndex = 0  // если вышли за границы, на начало
+            }
+            // Если список пустой, индекс остаётся 0
             _cards.value = cardOrder
-            // Debug-only logging; suppressed in release
-            if (DEBUG_LOGS) Log.d(TAG, "loadUnlearned size=${cardOrder.size}")
+            Log.d(TAG, "loadUnlearned: DONE, currentIndex=$currentIndex")
+            Log.d(TAG, "loadUnlearned: currentIndex=$currentIndex, size=${cardOrder.size}")
         }
     }
+
     fun getCurrentCard(): Flashcard? = cardOrder.getOrNull(currentIndex)
     fun nextCard(): Flashcard? {
         Log.d(TAG, "nextCard -> index=$currentIndex of ${cardOrder.size}")
@@ -205,22 +228,37 @@ class FlashcardViewModel(private val repository: FlashcardRepository) : ViewMode
         if (DEBUG_LOGS) Log.d(TAG, "prevCard -> index=$currentIndex of ${cardOrder.size}")
         return getCurrentCard()
     }
-    fun markLearned(card: Flashcard) {
-        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
-        viewModelScope.launch {
-            repository.updateLearnedStatus(card.id, true, setId)
-            cardOrder.getOrNull(currentIndex)?.isLearned = true
-            if (DEBUG_LOGS) Log.d(TAG, "markLearned id=${card.id}")
-        }
+//    fun markLearned(card: Flashcard) {
+//        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
+//        viewModelScope.launch {
+//            repository.updateLearnedStatus(card.id, true, setId)
+//            cardOrder.getOrNull(currentIndex)?.isLearned = true
+//            Log.d(TAG, "markLearned: id=${card.id}, currentIndex=$currentIndex")
+//        }
+//    }
+//    fun markUnlearned(card: Flashcard) {
+//        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
+//        viewModelScope.launch {
+//            repository.updateLearnedStatus(card.id, false, setId)
+//            cardOrder.getOrNull(currentIndex)?.isLearned = false
+//            if (DEBUG_LOGS) Log.d(TAG, "markUnlearned id=${card.id}")
+//        }
+//    }
+
+    suspend fun markLearned(card: Flashcard) {
+        val setId = _activeSetId.value ?: 1
+        repository.updateLearnedStatus(card.id, true, setId)
+        cardOrder.getOrNull(currentIndex)?.isLearned = true
+        Log.d(TAG, "markLearned: id=${card.id}, setId=$setId")
     }
-    fun markUnlearned(card: Flashcard) {
-        val setId = _activeSetId.value ?: 1  // ДОБАВЬТЕ эту строку
-        viewModelScope.launch {
-            repository.updateLearnedStatus(card.id, false, setId)
-            cardOrder.getOrNull(currentIndex)?.isLearned = false
-            if (DEBUG_LOGS) Log.d(TAG, "markUnlearned id=${card.id}")
-        }
+
+    suspend fun markUnlearned(card: Flashcard) {
+        val setId = _activeSetId.value ?: 1
+        repository.updateLearnedStatus(card.id, false, setId)
+        cardOrder.getOrNull(currentIndex)?.isLearned = false
+        Log.d(TAG, "markUnlearned: id=${card.id}, setId=$setId")
     }
+
     fun toggleDirection() {
         showSide1First = !showSide1First
         _cards.value = cardOrder

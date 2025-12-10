@@ -328,35 +328,69 @@ class FlashcardFragment : Fragment() {
 //        }
 
 //
+//        binding.btnLearned.setOnClickListener {
+//            if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
+//            val card = viewModel.getCurrentCard() ?: return@setOnClickListener
+//
+//            // Помечаем карточку
+//            if (currentFilter == Filter.LEARNED) {
+//                viewModel.markUnlearned(card)
+//            } else {
+//                viewModel.markLearned(card)
+//            }
+//
+//            when (currentFilter) {
+//                Filter.ALL -> {
+//                    // В режиме ALL двигаем индекс вручную ОДИН раз
+//                    viewModel.nextCard()
+//                    showingSide1 = viewModel.showSide1First
+//                    resetSeenForCurrentCard()
+//                    lastState = null
+//                    showCurrentCard()
+//                }
+//                Filter.UNLEARNED, Filter.LEARNED -> {
+//                    // В режимах с фильтром НИГДЕ не вызываем nextCard!
+//                    showingSide1 = viewModel.showSide1First
+//                    isReloading = true
+//                    lastState = null
+//                    reloadAccordingToFilter()
+//                }
+//            }
+//        }
+
         binding.btnLearned.setOnClickListener {
             if (DEBUG_LOGS) Log.d(TAG, "btnLearned click (short)")
             val card = viewModel.getCurrentCard() ?: return@setOnClickListener
 
-            // Помечаем карточку
-            if (currentFilter == Filter.LEARNED) {
-                viewModel.markUnlearned(card)
-            } else {
-                viewModel.markLearned(card)
-            }
-
-            when (currentFilter) {
-                Filter.ALL -> {
-                    // В режиме ALL двигаем индекс вручную ОДИН раз
-                    viewModel.nextCard()
-                    showingSide1 = viewModel.showSide1First
-                    resetSeenForCurrentCard()
-                    lastState = null
-                    showCurrentCard()
+            viewLifecycleOwner.lifecycleScope.launch {
+                // 1. Сначала помечаем и ЖДЁМ завершения
+                if (currentFilter == Filter.LEARNED) {
+                    viewModel.markUnlearned(card)
+                } else {
+                    viewModel.markLearned(card)
                 }
-                Filter.UNLEARNED, Filter.LEARNED -> {
-                    // В режимах с фильтром НИГДЕ не вызываем nextCard!
-                    showingSide1 = viewModel.showSide1First
-                    isReloading = true
-                    lastState = null
-                    reloadAccordingToFilter()
+
+                Log.d(TAG, "btnLearned: mark completed, now reloading")
+
+                // 2. Только после этого перезагружаем
+                when (currentFilter) {
+                    Filter.ALL -> {
+                        viewModel.nextCard()
+                        showingSide1 = viewModel.showSide1First
+                        resetSeenForCurrentCard()
+                        lastState = null
+                        showCurrentCard()
+                    }
+                    Filter.UNLEARNED, Filter.LEARNED -> {
+                        showingSide1 = viewModel.showSide1First
+                        isReloading = true
+                        lastState = null
+                        reloadAccordingToFilter()
+                    }
                 }
             }
         }
+
 
         binding.btnLearned.setOnLongClickListener {
             val ctx = requireContext()
